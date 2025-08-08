@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Time Tracker</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 600px;
+      margin: 30px auto;
+      padding: 20px;
+      background: #f9f9f9;
+      border-radius: 12px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      text-align: center;
+    }
+    input, button {
+      padding: 8px;
+      margin: 5px 0;
+      font-size: 1rem;
+    }
+    .timer-controls, .log {
+      margin-top: 20px;
+    }
+    .log-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .log-table th, .log-table td {
+      padding: 8px;
+      border: 1px solid #ccc;
+      text-align: left;
+    }
+    .button-group {
+      display: flex;
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Time Tracker</h1>
+  <label>Task:</label>
+  <input type="text" id="task" placeholder="Enter task name" />
+  <br />
+  <label>Duration (minutes):</label>
+  <input type="number" id="duration" value="25" min="1" />
+  <br />
+  <div class="button-group">
+    <button onclick="startTimer()">Start</button>
+    <button onclick="stopTimer()">Stop</button>
+    <button onclick="exportCSV()">Export CSV</button>
+  </div>
+  <div class="timer-controls">
+    <h2 id="countdown">00:00</h2>
+  </div>
+  <div class="log">
+    <h3>Session History</h3>
+    <table class="log-table" id="logTable">
+      <thead>
+        <tr>
+          <th>Task</th>
+          <th>Duration</th>
+          <th>Start (UTC)</th>
+          <th>End (UTC)</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <audio id="ding" src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" preload="auto"></audio>
+  <script>
+    let timer = null;
+    let endTime = null;
+    let startTime = null;
+    let currentTask = null;
+    let currentDuration = null;
+    let dingTimeout = null;
+
+    function formatTime(ms) {
+      const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+      const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+      const seconds = String(totalSeconds % 60).padStart(2, '0');
+      return `${minutes}:${seconds}`;
+    }
+
+    function startTimer() {
+      const task = document.getElementById('task').value.trim();
+      const minutes = parseInt(document.getElementById('duration').value, 10);
+      if (!task || isNaN(minutes) || minutes < 1) return alert('Please enter a valid task and duration.');
+
+      startTime = Date.now();
+      endTime = startTime + minutes * 60000;
+      currentTask = task;
+      currentDuration = minutes;
+      updateCountdown();
+
+      if (Notification.permission !== 'granted') {
+        Notification.requestPermission();
+      }
+
+      timer = setInterval(() => {
+        updateCountdown();
+        const remaining = endTime - Date.now();
+        if (remaining <= 0) {
+          notify(currentTask);
+          logSession(currentTask, currentDuration);
+          stopTimer();
+        }
+      }, 500);
+    }
+
+    function stopTimer() {
+      clearInterval(timer);
+      timer = null;
+      endTime = null;
+      startTime = null;
+      currentTask = null;
+      currentDuration = null;
+      document.getElementById('countdown').textContent = '00:00';
+      document.title = 'Time Tracker';
+    }
+
+    function updateCountdown() {
+      if (!endTime) return;
+      const now = Date.now();
+      const remaining = endTime - now;
+      const timeString = formatTime(remaining);
+      document.getElementById('countdown').textContent = timeString;
+      document.title = `${timeString} - Time Tracker`;
+    }
+
+    function notify(task) {
+      const ding = document.getElementById('ding');
+      ding.play();
+      dingTimeout = setTimeout(() => ding.pause(), 3000);
+      if (Notification.permission === 'granted') {
+        new Notification('Time is up!', { body: `Task: ${task}` });
+      }
+    }
+
+    function logSession(task, minutes) {
+      if (!startTime) return;
+      const start = new Date(startTime);
+      const end = new Date();
+      const session = {
+        task,
+        duration: `${minutes}:00`,
+        start: start.toISOString().split('T')[1].split('.')[0] + ' UTC',
+        end: end.toISOString().split('T')[1].split('.')[0] + ' UTC',
+      };
+
+      const log = JSON.parse(localStorage.getItem('time_log') || '[]');
+      log.push(session);
+      localStorage.setItem('time_log', JSON.stringify(log));
+      renderLog();
+    }
+
+    function renderLog() {
+      const log = JSON.parse(localStorage.getItem('time_log') || '[]');
+      const tbody = document.querySelector('#logTable tbody');
+      tbody.innerHTML = '';
+      log.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${row.task}</td><td>${row.duration}</td><td>${row.start}</td><td>${row.end}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function exportCSV() {
+      const log = JSON.parse(localStorage.getItem('time_log') || '[]');
+      if (log.length === 0) return alert('No data to export.');
+      const header = ['Task', 'Duration', 'Start (UTC)', 'End (UTC)'];
+      const rows = log.map(r => [r.task, r.duration, r.start, r.end]);
+      const csv = [header.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'time_log.csv';
+      a.click();
+    }
+
+    renderLog();
+  </script>
+</body>
+</html>
