@@ -14,31 +14,18 @@
       border-radius: 12px;
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
     }
-    h1 {
-      text-align: center;
-    }
+    h1 { text-align: center; }
     input, button {
       padding: 8px;
       margin: 5px 0;
       font-size: 1rem;
     }
-    .timer-controls, .log {
-      margin-top: 20px;
-    }
-    .log-table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    .log-table th, .log-table td {
-      padding: 8px;
-      border: 1px solid #ccc;
-      text-align: left;
-    }
-    .button-group {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
+    .timer-controls, .log { margin-top: 20px; }
+    .log-table { width: 100%; border-collapse: collapse; }
+    .log-table th, .log-table td { padding: 8px; border: 1px solid #ccc; text-align: left; }
+    .button-group { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .muted-badge { font-size: 0.9rem; padding: 2px 8px; border-radius: 999px; background: #eee; color: #555; display: inline-block; margin-left: 6px; }
+    .muted-true { background: #ffe2e2; color: #b00020; }
   </style>
 </head>
 <body>
@@ -54,6 +41,10 @@
     <button onclick="stopTimer(true)">Stop</button>
     <button onclick="exportCSV()">Export CSV</button>
     <button onclick="clearHistory()">Clear History</button>
+    <button id="muteSoundBtn" onclick="toggleMuteSound()">Mute Sound</button>
+    <span id="muteSoundBadge" class="muted-badge">Sound: On</span>
+    <button id="muteNotifBtn" onclick="toggleMuteNotifications()">Disable Notifications</button>
+    <span id="muteNotifBadge" class="muted-badge">Notifications: On</span>
   </div>
   <div class="timer-controls">
     <h2 id="countdown">00:00</h2>
@@ -80,6 +71,8 @@
     let currentTask = null;
     let currentDuration = null;
     let dingTimeout = null;
+    let muteSound = JSON.parse(localStorage.getItem('muteSound') || 'false');
+    let muteNotifications = JSON.parse(localStorage.getItem('muteNotifications') || 'false');
 
     function formatTime(ms) {
       const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -87,7 +80,6 @@
       const seconds = String(totalSeconds % 60).padStart(2, '0');
       return `${minutes}:${seconds}`;
     }
-
     function formatExcelDateString(dateObj) {
       return dateObj.toISOString().replace('T', ' ').split('.')[0];
     }
@@ -103,7 +95,7 @@
       currentDuration = minutes;
       updateCountdown();
 
-      if (Notification.permission !== 'granted') {
+      if (!muteNotifications && Notification && Notification.permission !== 'granted') {
         Notification.requestPermission();
       }
 
@@ -142,10 +134,13 @@
     }
 
     function notify(task) {
-      const ding = document.getElementById('ding');
-      ding.play();
-      dingTimeout = setTimeout(() => ding.pause(), 3000);
-      if (Notification.permission === 'granted') {
+      if (!muteSound) {
+        const ding = document.getElementById('ding');
+        ding.currentTime = 0;
+        ding.play();
+        dingTimeout = setTimeout(() => { try { ding.pause(); } catch(e){} }, 3000);
+      }
+      if (!muteNotifications && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         new Notification('Time is up!', { body: `Task: ${task}` });
       }
     }
@@ -203,6 +198,38 @@
         renderLog();
       }
     }
+
+    function toggleMuteSound() {
+      muteSound = !muteSound;
+      localStorage.setItem('muteSound', JSON.stringify(muteSound));
+      const badge = document.getElementById('muteSoundBadge');
+      document.getElementById('muteSoundBtn').textContent = muteSound ? 'Unmute Sound' : 'Mute Sound';
+      badge.textContent = muteSound ? 'Sound: Off' : 'Sound: On';
+      badge.className = 'muted-badge ' + (muteSound ? 'muted-true' : '');
+      if (muteSound) {
+        const ding = document.getElementById('ding');
+        if (!ding.paused) ding.pause();
+        if (dingTimeout) { clearTimeout(dingTimeout); dingTimeout = null; }
+      }
+    }
+
+    function toggleMuteNotifications() {
+      muteNotifications = !muteNotifications;
+      localStorage.setItem('muteNotifications', JSON.stringify(muteNotifications));
+      const badge = document.getElementById('muteNotifBadge');
+      document.getElementById('muteNotifBtn').textContent = muteNotifications ? 'Enable Notifications' : 'Disable Notifications';
+      badge.textContent = muteNotifications ? 'Notifications: Off' : 'Notifications: On';
+      badge.className = 'muted-badge ' + (muteNotifications ? 'muted-true' : '');
+    }
+
+    (function initUI(){
+      document.getElementById('muteSoundBtn').textContent = muteSound ? 'Unmute Sound' : 'Mute Sound';
+      document.getElementById('muteSoundBadge').textContent = muteSound ? 'Sound: Off' : 'Sound: On';
+      document.getElementById('muteSoundBadge').className = 'muted-badge ' + (muteSound ? 'muted-true' : '');
+      document.getElementById('muteNotifBtn').textContent = muteNotifications ? 'Enable Notifications' : 'Disable Notifications';
+      document.getElementById('muteNotifBadge').textContent = muteNotifications ? 'Notifications: Off' : 'Notifications: On';
+      document.getElementById('muteNotifBadge').className = 'muted-badge ' + (muteNotifications ? 'muted-true' : '');
+    })();
 
     renderLog();
   </script>
