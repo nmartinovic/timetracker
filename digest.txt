@@ -1,3 +1,19 @@
+Directory structure:
+└── timetracker/
+    ├── README.md
+    └── index.html
+
+================================================
+FILE: README.md
+================================================
+# timetracker
+basic timetracker
+
+
+
+================================================
+FILE: index.html
+================================================
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -41,22 +57,14 @@
     <button onclick="stopTimer(true)">Stop</button>
     <button onclick="exportCSV()">Export CSV</button>
     <button onclick="clearHistory()">Clear History</button>
-
     <button id="muteSoundBtn" onclick="toggleMuteSound()">Mute Sound</button>
     <span id="muteSoundBadge" class="muted-badge">Sound: On</span>
-
     <button id="muteNotifBtn" onclick="toggleMuteNotifications()">Disable Notifications</button>
     <span id="muteNotifBadge" class="muted-badge">Notifications: On</span>
-
-    <!-- NEW: Reminders mute -->
-    <button id="muteRemindersBtn" onclick="toggleMuteReminders()">Mute Reminders</button>
-    <span id="muteRemindersBadge" class="muted-badge">Reminders: On</span>
   </div>
-
   <div class="timer-controls">
     <h2 id="countdown">00:00</h2>
   </div>
-
   <div class="log">
     <h3>Session History</h3>
     <table class="log-table" id="logTable">
@@ -71,31 +79,16 @@
       <tbody></tbody>
     </table>
   </div>
-
   <audio id="ding" src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" preload="auto"></audio>
-
   <script>
-    // ===== State =====
     let timer = null;
     let endTime = null;
     let startTime = null;
     let currentTask = null;
     let currentDuration = null;
     let dingTimeout = null;
-
-    // Existing mutes
     let muteSound = JSON.parse(localStorage.getItem('muteSound') || 'false');
     let muteNotifications = JSON.parse(localStorage.getItem('muteNotifications') || 'false');
-
-    // NEW: reminders mute + idle tracking
-    let muteReminders = JSON.parse(localStorage.getItem('muteReminders') || 'false');
-    let lastTimerActivity = parseInt(localStorage.getItem('lastTimerActivity') || String(Date.now()), 10);
-
-    // ===== Helpers =====
-    function markActivity() {
-      lastTimerActivity = Date.now();
-      localStorage.setItem('lastTimerActivity', String(lastTimerActivity));
-    }
 
     function formatTime(ms) {
       const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -107,22 +100,6 @@
       return dateObj.toISOString().replace('T', ' ').split('.')[0];
     }
 
-    // Work windows: 09:30–13:00 and 14:00–18:00 Europe/Paris (DST safe)
-    function inParisWorkWindows() {
-      const nowParis = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
-      const hh = nowParis.getHours();
-      const mm = nowParis.getMinutes();
-      const minutes = hh * 60 + mm;
-      const morningStart = 9 * 60 + 30;  // 09:30 => 570
-      const morningEnd   = 13 * 60;      // 13:00 => 780, exclusive end
-      const aftStart     = 14 * 60;      // 14:00 => 840
-      const aftEnd       = 18 * 60;      // 18:00 => 1080
-      const inMorning = minutes >= morningStart && minutes < morningEnd;
-      const inAfternoon = minutes >= aftStart && minutes < aftEnd;
-      return inMorning || inAfternoon;
-    }
-
-    // ===== Core timer =====
     function startTimer() {
       const task = document.getElementById('task').value.trim();
       const minutes = parseInt(document.getElementById('duration').value, 10);
@@ -133,13 +110,11 @@
       currentTask = task;
       currentDuration = minutes;
       updateCountdown();
-      markActivity();
 
       if (!muteNotifications && Notification && Notification.permission !== 'granted') {
         Notification.requestPermission();
       }
 
-      if (timer) clearInterval(timer);
       timer = setInterval(() => {
         updateCountdown();
         const remaining = endTime - Date.now();
@@ -163,7 +138,6 @@
       currentDuration = null;
       document.getElementById('countdown').textContent = '00:00';
       document.title = 'Time Tracker';
-      markActivity();
     }
 
     function updateCountdown() {
@@ -187,7 +161,6 @@
       }
     }
 
-    // ===== Logging =====
     function logSession(task) {
       if (!startTime) return;
       const start = new Date(startTime);
@@ -214,7 +187,7 @@
       const log = JSON.parse(localStorage.getItem('time_log') || '[]');
       const tbody = document.querySelector('#logTable tbody');
       tbody.innerHTML = '';
-      // Show newest first
+      // Reverse so newest entries appear first
       log.slice().reverse().forEach(row => {
         const tr = document.createElement('tr');
         tr.innerHTML = `<td>${row.task}</td><td>${row.duration}</td><td>${row.start}</td><td>${row.end}</td>`;
@@ -222,7 +195,7 @@
       });
     }
 
-    // ===== Export / Clear =====
+
     function exportCSV() {
       const log = JSON.parse(localStorage.getItem('time_log') || '[]');
       if (log.length === 0) return alert('No data to export.');
@@ -244,7 +217,6 @@
       }
     }
 
-    // ===== Toggles =====
     function toggleMuteSound() {
       muteSound = !muteSound;
       localStorage.setItem('muteSound', JSON.stringify(muteSound));
@@ -268,67 +240,18 @@
       badge.className = 'muted-badge ' + (muteNotifications ? 'muted-true' : '');
     }
 
-    function toggleMuteReminders() {
-      muteReminders = !muteReminders;
-      localStorage.setItem('muteReminders', JSON.stringify(muteReminders));
-      const badge = document.getElementById('muteRemindersBadge');
-      document.getElementById('muteRemindersBtn').textContent = muteReminders ? 'Unmute Reminders' : 'Mute Reminders';
-      badge.textContent = muteReminders ? 'Reminders: Off' : 'Reminders: On';
-      badge.className = 'muted-badge ' + (muteReminders ? 'muted-true' : '');
-    }
-
-    // Init UI states
     (function initUI(){
       document.getElementById('muteSoundBtn').textContent = muteSound ? 'Unmute Sound' : 'Mute Sound';
       document.getElementById('muteSoundBadge').textContent = muteSound ? 'Sound: Off' : 'Sound: On';
       document.getElementById('muteSoundBadge').className = 'muted-badge ' + (muteSound ? 'muted-true' : '');
-
       document.getElementById('muteNotifBtn').textContent = muteNotifications ? 'Enable Notifications' : 'Disable Notifications';
       document.getElementById('muteNotifBadge').textContent = muteNotifications ? 'Notifications: Off' : 'Notifications: On';
       document.getElementById('muteNotifBadge').className = 'muted-badge ' + (muteNotifications ? 'muted-true' : '');
-
-      document.getElementById('muteRemindersBtn').textContent = muteReminders ? 'Unmute Reminders' : 'Mute Reminders';
-      document.getElementById('muteRemindersBadge').textContent = muteReminders ? 'Reminders: Off' : 'Reminders: On';
-      document.getElementById('muteRemindersBadge').className = 'muted-badge ' + (muteReminders ? 'muted-true' : '');
-
-      // Ensure we have a baseline last activity
-      if (!localStorage.getItem('lastTimerActivity')) markActivity();
     })();
 
-    // ===== Idle Reminder loop (every minute) =====
-    function maybeSendIdleReminder() {
-      // Only if no timer running, within Paris work windows, and reminders allowed
-      const noTimerRunning = (timer === null);
-      const twentyMinutes = 20 * 60 * 1000;
-
-      if (
-        noTimerRunning &&
-        !muteReminders &&
-        inParisWorkWindows()
-      ) {
-        const idleMs = Date.now() - lastTimerActivity;
-        if (idleMs >= twentyMinutes) {
-          // Ask permission once if needed
-          if (!muteNotifications && typeof Notification !== 'undefined') {
-            if (Notification.permission !== 'granted') {
-              Notification.requestPermission();
-            }
-            if (Notification.permission === 'granted') {
-              new Notification('Reminder: no timer running', { body: 'Start a timer?' });
-            }
-          }
-          // Reset the idle clock so we don’t spam every minute
-          markActivity();
-        }
-      }
-    }
-
-    setInterval(maybeSendIdleReminder, 60 * 1000); // check every minute
-    // Run once at load
-    maybeSendIdleReminder();
-
-    // Render existing log
     renderLog();
   </script>
 </body>
 </html>
+
+
