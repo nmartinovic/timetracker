@@ -26,7 +26,6 @@
     .button-group { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
     .muted-badge { font-size: 0.9rem; padding: 2px 8px; border-radius: 999px; background: #eee; color: #555; display: inline-block; margin-left: 6px; }
     .muted-true { background: #ffe2e2; color: #b00020; }
-    #extendBtn { display: none; }
     #nextReminderETA { font-size: 0.9rem; color: #666; margin-top: 6px; }
     /* Simple modal */
     .modal-backdrop {
@@ -60,7 +59,6 @@
   <div class="button-group">
     <button onclick="startTimer()">Start</button>
     <button onclick="stopTimer(true)">Stop</button>
-    <button id="extendBtn" onclick="extendTimer()">Extend Timer</button>
 
     <button onclick="exportCSV()">Export CSV</button>
     <button onclick="clearHistory()">Clear History</button>
@@ -146,9 +144,8 @@
     let lastTimerActivity = parseInt(localStorage.getItem('lastTimerActivity') || String(Date.now()), 10);
     let idleCheckHandle = null;
 
-    // Overtime after 0:00
-    let isOvertime = false;
-    let atZeroHandled = false;
+    // Logging guard to avoid duplicates
+    let hasLoggedCurrent = false;
 
     // Modal state
     let modalMode = 'edit'; // 'edit' | 'add'
@@ -161,11 +158,10 @@
     }
 
     function formatTime(ms) {
-      const sign = ms < 0 ? -1 : 1;
       const totalSeconds = Math.max(0, Math.floor(Math.abs(ms) / 1000));
       const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
       const seconds = String(totalSeconds % 60).padStart(2, '0');
-      return (sign < 0 ? '-' : '') + `${minutes}:${seconds}`;
+      return `${minutes}:${seconds}`;
     }
 
     function formatExcelDateString(dateObj) {
@@ -203,6 +199,10 @@
       return log.findIndex(x => x.id === id);
     }
 
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
     // Work windows: 09:30–13:00 and 14:00–18:00 (Europe/Paris, DST-safe)
     function inParisWorkWindows() {
       const nowParis = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
@@ -227,9 +227,7 @@
       endTime = startTime + minutes * 60000;
       currentTask = task;
       currentDuration = minutes;
-      isOvertime = false;
-      atZeroHandled = false;
-      document.getElementById('extendBtn').style.display = 'none';
+      hasLoggedCurrent = false;
 
       updateCountdown();
       markActivity();
@@ -242,34 +240,30 @@
       timer = setInterval(() => {
         updateCountdown();
         const remaining = endTime - Date.now();
-        if (remaining <= 0 && !atZeroHandled) {
-          atZeroHandled = true;
+        if (remaining <= 0 && !hasLoggedCurrent) {
+          // Time's up: notify, log, and stop automatically
           notify(currentTask);
-          document.getElementById('extendBtn').style.display = 'inline-block';
+          logSession(currentTask);
+          hasLoggedCurrent = true;
+          stopTimer(false); // cleanup without logging again
         }
       }, 500);
-    }
-
-    function extendTimer() {
-      if (!endTime) return;
-      isOvertime = true;
-      document.getElementById('extendBtn').style.display = 'none';
-      updateCountdown();
     }
 
     function stopTimer(log = false) {
       clearInterval(timer);
       timer = null;
-      if (log && currentTask && startTime) {
+
+      if (log && !hasLoggedCurrent && currentTask && startTime) {
         logSession(currentTask);
+        hasLoggedCurrent = true;
       }
+
       endTime = null;
       startTime = null;
       currentTask = null;
       currentDuration = null;
-      isOvertime = false;
-      atZeroHandled = false;
-      document.getElementById('extendBtn').style.display = 'none';
+
       document.getElementById('countdown').textContent = '00:00';
       document.title = 'Time Tracker';
       markActivity();
@@ -278,16 +272,10 @@
     function updateCountdown() {
       if (!endTime) return;
       const now = Date.now();
-      let displayText = '';
-      if (isOvertime) {
-        const overtime = now - endTime; // count up
-        displayText = '+' + formatTime(overtime);
-      } else {
-        const remaining = Math.max(0, endTime - now);
-        displayText = formatTime(remaining);
-      }
-      document.getElementById('countdown').textContent = displayText;
-      document.title = `${displayText} - Time Tracker`;
+      const remaining = Math.max(0, endTime - now);
+      const timeString = formatTime(remaining);
+      document.getElementById('countdown').textContent = timeString;
+      document.title = `${timeString} - Time Tracker`;
     }
 
     function notify(task) {
@@ -298,14 +286,19 @@
         dingTimeout = setTimeout(() => { try { ding.pause(); } catch(e){} }, 3000);
       }
       if (!muteNotifications && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        const n = new Notification('Time is up!', { body: `Task: ${task}\n(click to extend)` });
-        n.onclick = () => {
-          try { window.focus(); } catch(e) {}
-          extendTimer();
-          try { n.close(); } catch(e) {}
-        };
+        new Notification('Time is up!', { body: `Task: ${task}` });
       }
     }
+
+    // Log on page unload if finished and not yet logged (belt & suspenders)
+    window.addEventListener('beforeunload', () => {
+      try {
+        if (!hasLoggedCurrent && startTime && endTime && Date.now() >= endTime) {
+          logSession(currentTask);
+          hasLoggedCurrent = true;
+        }
+      } catch (e) {}
+    });
 
     // ========= Logging =========
     function logSession(task) {
@@ -350,10 +343,6 @@
       });
     }
 
-    function escapeHtml(s) {
-      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    }
-
     // ========= Export / Clear =========
     function exportCSV() {
       const log = JSON.parse(localStorage.getItem('time_log') || '[]');
@@ -367,7 +356,7 @@
       a.href = url;
       a.download = 'time_log.csv';
       a.click();
-      function csvEscape(val){ 
+      function csvEscape(val){
         const s = String(val ?? '');
         return (s.includes(',') || s.includes('"') || s.includes('\n')) ? '"' + s.replace(/"/g,'""') + '"' : s;
       }
@@ -568,9 +557,14 @@
         lastTimerActivity = parseInt(localStorage.getItem('lastTimerActivity'), 10) || Date.now();
       }
 
-      ensureNotifPermissionForReminders();
+      // Ask for permission early so cold-start reminders work
+      if (!muteNotifications && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+        Notification.requestPermission();
+      }
+
       renderLog();
 
+      // Kick off idle reminder loop
       updateNextReminderEstimate();
       scheduleNextIdleCheck(60*1000);
       document.addEventListener('visibilitychange', () => {
@@ -579,9 +573,7 @@
       });
 
       // Close modal on ESC or backdrop click
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeModal();
-      });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
       document.getElementById('modalBackdrop').addEventListener('click', (e) => {
         if (e.target.id === 'modalBackdrop') closeModal();
       });
