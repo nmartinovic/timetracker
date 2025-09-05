@@ -342,6 +342,20 @@
     }
     let displayTZ = localStorage.getItem('displayTZ') || getSystemTZ();
 
+    // ===== Active timer persistence =====
+    function writeActiveTimer() {
+      if (!startTime || !endTime || !currentTask) return;
+      const payload = { task: currentTask, startMs: startTime, endMs: endTime, hasLogged: !!hasLoggedCurrent };
+      localStorage.setItem('active_timer', JSON.stringify(payload));
+    }
+    function clearActiveTimer() {
+      localStorage.removeItem('active_timer');
+    }
+    function loadActiveTimer() {
+      try { return JSON.parse(localStorage.getItem('active_timer') || 'null'); }
+      catch(e){ return null; }
+    }
+
     /* ========= Helpers ========= */
     function markActivity() {
       lastTimerActivity = Date.now();
@@ -438,13 +452,17 @@
         Notification.requestPermission();
       }
 
+      // Persist active timer immediately
+      writeActiveTimer();
+
       if (timer) clearInterval(timer);
       timer = setInterval(() => {
         updateCountdown();
         const remaining = endTime - Date.now();
         if (remaining <= 0 && !hasLoggedCurrent) {
           notify(currentTask);
-          logSession(currentTask);
+          // Log using scheduled endTime to keep duration precise
+          logSession(currentTask, endTime);
           hasLoggedCurrent = true;
           stopTimer(false); // cleanup only
         }
@@ -456,7 +474,8 @@
       timer = null;
 
       if (log && !hasLoggedCurrent && currentTask && startTime) {
-        logSession(currentTask);
+        // Log up to now
+        logSession(currentTask, Date.now());
         hasLoggedCurrent = true;
       }
 
@@ -464,6 +483,8 @@
       startTime = null;
       currentTask = null;
       currentDuration = null;
+
+      clearActiveTimer();
 
       document.getElementById('countdown').textContent = '00:00';
       document.title = 'Time Tracker';
@@ -478,6 +499,8 @@
       const timeString = formatTime(remaining);
       document.getElementById('countdown').textContent = timeString;
       document.title = `${timeString} - Time Tracker`;
+      // keep persisted copy fresh
+      writeActiveTimer();
     }
 
     function notify(task) {
@@ -496,17 +519,56 @@
     window.addEventListener('beforeunload', () => {
       try {
         if (!hasLoggedCurrent && startTime && endTime && Date.now() >= endTime) {
-          logSession(currentTask);
+          logSession(currentTask, endTime);
           hasLoggedCurrent = true;
         }
       } catch (e) {}
     });
 
+    // Restore active timer on load (resume or auto-log)
+    function restoreActiveTimer() {
+      const saved = loadActiveTimer();
+      if (!saved) return;
+
+      currentTask = saved.task;
+      startTime = saved.startMs;
+      endTime = saved.endMs;
+      hasLoggedCurrent = !!saved.hasLogged;
+
+      if (!startTime || !endTime || !currentTask) {
+        clearActiveTimer(); return;
+      }
+
+      const now = Date.now();
+      if (now < endTime) {
+        // Resume countdown
+        updateCountdown();
+        if (timer) clearInterval(timer);
+        timer = setInterval(() => {
+          updateCountdown();
+          const remaining = endTime - Date.now();
+          if (remaining <= 0 && !hasLoggedCurrent) {
+            notify(currentTask);
+            logSession(currentTask, endTime);
+            hasLoggedCurrent = true;
+            stopTimer(false);
+          }
+        }, 500);
+      } else {
+        // Timer ended while away — log once (no sound)
+        if (!hasLoggedCurrent) {
+          logSession(currentTask, endTime);
+          hasLoggedCurrent = true;
+        }
+        stopTimer(false); // cleanup state & clear active
+      }
+    }
+
     /* ========= Logging ========= */
-    function logSession(task) {
+    function logSession(task, endOverrideMs /* optional */) {
       if (!startTime) return;
       const start = new Date(startTime);
-      const end = new Date();
+      const end = new Date(typeof endOverrideMs === 'number' ? endOverrideMs : Date.now());
       const duration = durationStringFromDates(start, end);
 
       // Store in UTC
@@ -881,6 +943,9 @@
       }
 
       renderLog();
+
+      // Restore any active timer (resume or auto-log)
+      restoreActiveTimer();
 
       // Idle reminder loop
       updateNextReminderEstimate();
