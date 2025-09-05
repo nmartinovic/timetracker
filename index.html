@@ -2,119 +2,254 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Time Tracker</title>
   <style>
-    body {
-      font-family: sans-serif;
-      max-width: 720px;
-      margin: 30px auto;
-      padding: 20px;
-      background: #f9f9f9;
-      border-radius: 12px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    /* ===== Design tokens ===== */
+    :root{
+      --bg: #f6f7fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --primary: #2563eb;
+      --primary-600: #1d4ed8;
+      --primary-50: #eff6ff;
+      --accent: #10b981;
+      --warn: #ef4444;
+      --radius: 14px;
+      --shadow: 0 12px 30px rgba(0,0,0,.08);
+      --shadow-sm: 0 6px 18px rgba(0,0,0,.06);
     }
-    h1 { text-align: center; }
-    input, button {
-      padding: 8px;
-      margin: 5px 0;
-      font-size: 1rem;
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg: #0f172a;
+        --card: #111827;
+        --text: #e5e7eb;
+        --muted: #9ca3af;
+        --border: #1f2937;
+        --primary: #60a5fa;
+        --primary-600: #3b82f6;
+        --primary-50: #0b1220;
+        --accent: #34d399;
+        --shadow: 0 12px 30px rgba(0,0,0,.35);
+        --shadow-sm: 0 6px 18px rgba(0,0,0,.3);
+      }
     }
-    .timer-controls, .log, .admin { margin-top: 20px; }
-    .log-table { width: 100%; border-collapse: collapse; }
-    .log-table th, .log-table td { padding: 8px; border: 1px solid #ccc; text-align: left; }
-    .button-group { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-    .muted-badge { font-size: 0.9rem; padding: 2px 8px; border-radius: 999px; background: #eee; color: #555; display: inline-block; margin-left: 6px; }
-    .muted-true { background: #ffe2e2; color: #b00020; }
-    #nextReminderETA { font-size: 0.9rem; color: #666; margin-top: 6px; }
-    /* Simple modal */
-    .modal-backdrop {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.35);
-      display: none; align-items: center; justify-content: center; z-index: 999;
-    }
-    .modal {
-      background: #fff; border-radius: 10px; padding: 16px; width: 100%; max-width: 520px;
-      box-shadow: 0 8px 30px rgba(0,0,0,0.2);
-    }
-    .modal h3 { margin-top: 0; }
-    .modal .row { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: center; margin-bottom: 10px; }
-    .modal .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
-    .help { font-size: 0.85rem; color: #666; }
-    .actions-col { white-space: nowrap; }
-    .btn-ghost { background: transparent; border: 1px solid #ccc; border-radius: 6px; padding: 6px 10px; }
-    .btn-warn { background: #ffecec; border-color: #ffb3b3; color: #b00020; }
-    .nowrap { white-space: nowrap; }
 
-    /* Chart area */
-    .chart-controls { margin-top: 12px; display: flex; gap: 10px; align-items: center; }
-    #chartWrap { margin-top: 12px; display: none; }
-    #barChart { width: 100%; max-width: 680px; height: 260px; border: 1px solid #ddd; background: #fff; border-radius: 8px; }
-    .chart-note { font-size: 0.85rem; color: #666; margin-top: 6px; }
+    /* ===== Layout & basics ===== */
+    html,body{height:100%}
+    body{
+      margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Helvetica, Arial, sans-serif;
+      color:var(--text); background:
+        radial-gradient(1200px 1200px at 10% -10%, rgba(37,99,235,.08), transparent 40%),
+        radial-gradient(1200px 1200px at 110% 10%, rgba(16,185,129,.06), transparent 40%),
+        var(--bg);
+    }
+    .container{
+      max-width: 980px; margin: 28px auto; padding: 0 16px;
+    }
+    .header{
+      display:flex; align-items: center; gap:14px; margin-bottom: 18px;
+    }
+    .logo{
+      width:40px; height:40px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+      box-shadow: var(--shadow-sm);
+      display:flex; align-items:center; justify-content:center; color:white; font-weight:700;
+    }
+    .title h1{margin:0; font-size: clamp(20px, 3vw, 28px);}
+    .title p{margin:2px 0 0; color:var(--muted); font-size: 14px}
+
+    .grid{
+      display:grid; gap:16px;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 980px){
+      .grid{ grid-template-columns: 420px 1fr; }
+    }
+
+    .card{
+      background: var(--card); border:1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow); padding:18px;
+    }
+    .section-title{
+      display:flex; align-items:center; justify-content: space-between; gap:10px; margin-bottom:12px;
+    }
+    .section-title h2{margin:0; font-size:18px}
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+    label{font-size:14px; color:var(--muted)}
+    input[type="text"], input[type="number"]{
+      border:1px solid var(--border); background:transparent; color:var(--text);
+      padding:10px 12px; border-radius:10px; outline:none; min-width: 0;
+    }
+    input::placeholder{color:var(--muted)}
+
+    .btn{
+      border:1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      padding:10px 14px; border-radius: 10px;
+      cursor:pointer; transition: transform .04s ease, background .2s ease, border-color .2s ease;
+      box-shadow: var(--shadow-sm);
+    }
+    .btn:hover{ transform: translateY(-1px); }
+    .btn:active{ transform: translateY(0); }
+    .btn-primary{
+      background: linear-gradient(180deg, var(--primary), var(--primary-600));
+      border-color: transparent; color: white;
+    }
+    .btn-ghost{
+      background: transparent;
+    }
+    .btn-warn{
+      border-color: color-mix(in oklab, var(--warn), black 10%);
+      color: var(--warn);
+      background: color-mix(in oklab, var(--warn), transparent 92%);
+    }
+    .badge{
+      font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid var(--border); color:var(--muted);
+      background: color-mix(in oklab, var(--primary-50), transparent 60%);
+    }
+    .badge.on{ color:#059669; border-color: #10b98144; background: #10b98111; }
+    .badge.off{ color:#b91c1c; border-color: #ef444444; background: #ef444411; }
+
+    .countdown{
+      font-size: clamp(32px, 6vw, 48px);
+      font-weight: 800; letter-spacing: 1px;
+      padding: 10px 14px; border-radius: 12px;
+      background: linear-gradient(to right, var(--primary-50), transparent);
+      border:1px solid var(--border);
+      display:inline-block; margin-top: 6px;
+    }
+    .hint{ color:var(--muted); font-size:12px; margin-top:4px }
+
+    /* Table */
+    table{ width:100%; border-collapse: collapse; }
+    thead th{
+      text-align:left; font-size:12px; color:var(--muted); font-weight:600;
+      border-bottom:1px solid var(--border); padding:10px 8px;
+      position: sticky; top:0; background: var(--card);
+    }
+    tbody td{
+      border-bottom:1px solid var(--border);
+      padding: 10px 8px; vertical-align: top;
+    }
+    tbody tr:hover{ background: color-mix(in oklab, var(--primary-50), transparent 85%); }
+
+    /* Chart */
+    #chartWrap{ display:none; margin-top:12px; }
+    #barChart{
+      width:100%; height:auto; border:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(99,102,241,0.04), transparent);
+      border-radius: 12px; box-shadow: var(--shadow-sm);
+    }
+    .chart-note{ font-size:12px; color:var(--muted); margin-top:6px }
+
+    /* Modal */
+    .modal-backdrop{ position:fixed; inset:0; display:none; place-items:center; background: rgba(0,0,0,.45); z-index: 50;}
+    .modal{
+      width:min(520px, 92vw); background: var(--card); color:var(--text);
+      border:1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow);
+      padding:18px;
+      animation: pop .14s ease-out;
+    }
+    @keyframes pop{ from{transform: scale(.98); opacity:.8} to{transform: scale(1); opacity:1} }
+    .modal h3{ margin:0 0 10px }
+    .modal .row{ display:grid; grid-template-columns: 140px 1fr; gap:10px; align-items:center }
+    .modal .actions{ display:flex; gap:10px; justify-content: end; margin-top:12px }
+
+    code{ background: color-mix(in oklab, var(--primary-50), transparent 70%); padding:2px 6px; border-radius:6px; }
+
+    /* Small utilities */
+    .spacer{ height:8px }
+    .nowrap{ white-space: nowrap }
+    .actions-col{ white-space: nowrap }
   </style>
 </head>
 <body>
-  <h1>Time Tracker</h1>
-
-  <label>Task:</label>
-  <input type="text" id="task" placeholder="Enter task name" />
-  <br />
-  <label>Duration (minutes):</label>
-  <input type="number" id="duration" value="25" min="1" />
-  <br />
-
-  <div class="button-group">
-    <button onclick="startTimer()">Start</button>
-    <button onclick="stopTimer(true)">Stop</button>
-
-    <button onclick="exportCSV()">Export CSV</button>
-    <button onclick="clearHistory()">Clear History</button>
-
-    <button id="muteSoundBtn" onclick="toggleMuteSound()">Mute Sound</button>
-    <span id="muteSoundBadge" class="muted-badge">Sound: On</span>
-
-    <button id="muteNotifBtn" onclick="toggleMuteNotifications()">Disable Notifications</button>
-    <span id="muteNotifBadge" class="muted-badge">Notifications: On</span>
-
-    <button id="muteRemindersBtn" onclick="toggleMuteReminders()">Mute Reminders</button>
-    <span id="muteRemindersBadge" class="muted-badge">Reminders: On</span>
-  </div>
-
-  <div class="admin">
-    <button class="btn-ghost" onclick="openAddModal()">Add Past Session</button>
-    <span class="help">Add/edit uses <span class="nowrap"><code>YYYY-MM-DD HH:MM:SS</code></span> in UTC.</span>
-
-    <div class="chart-controls">
-      <button class="btn-ghost" onclick="toggleChart()">Show Chart</button>
-      <span class="help">Bar chart: total tracked per day for the last five weekdays (Paris time).</span>
+  <div class="container">
+    <div class="header">
+      <div class="logo">TT</div>
+      <div class="title">
+        <h1>Time Tracker</h1>
+        <p>Lightweight, offline, and export-friendly.</p>
+      </div>
     </div>
-    <div id="chartWrap">
-      <canvas id="barChart" width="680" height="260"></canvas>
-      <div class="chart-note">Totals grouped by <strong>Europe/Paris</strong> day using each session’s <em>start time</em>.</div>
+
+    <div class="grid">
+      <!-- Left: controls -->
+      <div class="card">
+        <div class="section-title"><h2>Timer</h2></div>
+        <div class="row">
+          <label class="nowrap">Task</label>
+          <input id="task" type="text" placeholder="What are you working on?" style="flex:1" />
+        </div>
+        <div class="row">
+          <label class="nowrap">Duration (min)</label>
+          <input id="duration" type="number" value="25" min="1" style="width:120px" />
+        </div>
+        <div class="row" style="gap:8px; margin-top:6px">
+          <button class="btn btn-primary" onclick="startTimer()">Start</button>
+          <button class="btn" onclick="stopTimer(true)">Stop</button>
+          <span class="countdown" id="countdown">00:00</span>
+        </div>
+        <div class="hint" id="nextReminderETA"></div>
+
+        <div class="spacer"></div>
+        <div class="row" style="gap:8px; flex-wrap:wrap">
+          <button class="btn" onclick="exportCSV()">Export CSV</button>
+          <button class="btn btn-warn" onclick="clearHistory()">Clear History</button>
+          <button class="btn btn-ghost" onclick="openAddModal()">Add Past Session</button>
+        </div>
+
+        <div class="spacer"></div>
+        <div class="row" style="gap:8px; flex-wrap:wrap">
+          <button class="btn" id="muteSoundBtn" onclick="toggleMuteSound()">Mute Sound</button>
+          <span id="muteSoundBadge" class="badge on">Sound: On</span>
+
+          <button class="btn" id="muteNotifBtn" onclick="toggleMuteNotifications()">Disable Notifications</button>
+          <span id="muteNotifBadge" class="badge on">Notifications: On</span>
+
+          <button class="btn" id="muteRemindersBtn" onclick="toggleMuteReminders()">Mute Reminders</button>
+          <span id="muteRemindersBadge" class="badge on">Reminders: On</span>
+        </div>
+      </div>
+
+      <!-- Right: chart + history -->
+      <div class="card">
+        <div class="section-title">
+          <h2>Insights</h2>
+          <div class="row">
+            <button class="btn btn-ghost" onclick="toggleChart()">Show Chart</button>
+          </div>
+        </div>
+        <div id="chartWrap">
+          <canvas id="barChart" width="900" height="280"></canvas>
+          <div class="chart-note">Minutes per day for the last five weekdays (grouped by <strong>Europe/Paris</strong> day, using each session’s <em>start time</em>).</div>
+        </div>
+
+        <div class="section-title" style="margin-top:18px"><h2>Session History</h2></div>
+        <div style="max-height: 440px; overflow:auto; border:1px solid var(--border); border-radius: 12px">
+          <table class="log-table" id="logTable">
+            <thead>
+              <tr>
+                <th>Task</th>
+                <th class="nowrap">Duration</th>
+                <th>Start (UTC)</th>
+                <th>End (UTC)</th>
+                <th class="actions-col">Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+      </div>
     </div>
   </div>
 
-  <div class="timer-controls">
-    <h2 id="countdown">00:00</h2>
-    <div id="nextReminderETA"></div>
-  </div>
-
-  <div class="log">
-    <h3>Session History</h3>
-    <table class="log-table" id="logTable">
-      <thead>
-        <tr>
-          <th>Task</th>
-          <th class="nowrap">Duration</th>
-          <th>Start (UTC)</th>
-          <th>End (UTC)</th>
-          <th class="actions-col">Actions</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
-
-  <!-- Edit/Add Modal -->
+  <!-- Modal: Add/Edit -->
   <div id="modalBackdrop" class="modal-backdrop">
     <div class="modal">
       <h3 id="modalTitle">Edit Session</h3>
@@ -130,11 +265,11 @@
         <label for="modalEnd">End (UTC)</label>
         <input id="modalEnd" type="text" placeholder="YYYY-MM-DD HH:MM:SS" />
       </div>
-      <div class="help">Times must be UTC, e.g. <code>2025-03-01 09:30:00</code>.</div>
+      <div class="hint">Times must be UTC, e.g., <code>2025-03-01 09:30:00</code>.</div>
       <div class="actions">
-        <button class="btn-ghost" onclick="closeModal()">Cancel</button>
-        <button class="btn-ghost btn-warn" id="modalDeleteBtn" onclick="deleteSessionFromModal()" style="display:none">Delete</button>
-        <button onclick="saveModal()">Save</button>
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-ghost btn-warn" id="modalDeleteBtn" onclick="deleteSessionFromModal()" style="display:none">Delete</button>
+        <button class="btn btn-primary" onclick="saveModal()">Save</button>
       </div>
     </div>
   </div>
@@ -142,7 +277,7 @@
   <audio id="ding" src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" preload="auto"></audio>
 
   <script>
-    // ========= State =========
+    /* ========= State ========= */
     let timer = null;
     let endTime = null;
     let startTime = null;
@@ -166,26 +301,21 @@
     let modalMode = 'edit'; // 'edit' | 'add'
     let modalEditingId = null;
 
-    // ========= Helpers =========
+    /* ========= Helpers ========= */
     function markActivity() {
       lastTimerActivity = Date.now();
       localStorage.setItem('lastTimerActivity', String(lastTimerActivity));
     }
-
     function formatTime(ms) {
       const totalSeconds = Math.max(0, Math.floor(Math.abs(ms) / 1000));
       const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
       const seconds = String(totalSeconds % 60).padStart(2, '0');
       return `${minutes}:${seconds}`;
     }
-
     function formatExcelDateString(dateObj) {
-      // 'YYYY-MM-DD HH:MM:SS'
       return dateObj.toISOString().replace('T', ' ').split('.')[0];
     }
-
     function parseUTCString(s) {
-      // Expect 'YYYY-MM-DD HH:MM:SS'
       const m = s.trim().match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/);
       if (!m) return null;
       const [_, Y,M,D,h,mn,sc] = m;
@@ -193,14 +323,12 @@
       const dt = new Date(ms);
       return isNaN(dt.getTime()) ? null : dt;
     }
-
     function durationStringFromDates(startDt, endDt) {
       const ms = Math.max(0, endDt - startDt);
       const minutes = Math.floor(ms / 60000);
       const seconds = Math.floor((ms % 60000) / 1000);
       return `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
     }
-
     function ensureIdsOnLog(log) {
       let changed = false;
       log.forEach(item => {
@@ -208,31 +336,28 @@
       });
       if (changed) localStorage.setItem('time_log', JSON.stringify(log));
     }
-
     function findLogIndexById(id) {
       const log = JSON.parse(localStorage.getItem('time_log') || '[]');
       return log.findIndex(x => x.id === id);
     }
-
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
-    // Work windows: 09:30–13:00 and 14:00–18:00 (Europe/Paris, DST-safe)
+    // Work windows: 09:30–13:00 and 14:00–18:00 (Europe/Paris)
     function inParisWorkWindows() {
       const nowParis = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
       const hh = nowParis.getHours();
       const mm = nowParis.getMinutes();
       const minutes = hh * 60 + mm;
-      const morningStart = 9 * 60 + 30;  // 09:30
-      const morningEnd   = 13 * 60;      // 13:00
-      const aftStart     = 14 * 60;      // 14:00
-      const aftEnd       = 18 * 60;      // 18:00
-      return (minutes >= morningStart && minutes < morningEnd) ||
-             (minutes >= aftStart && minutes < aftEnd);
+      const morningStart = 9 * 60 + 30;
+      const morningEnd   = 13 * 60;
+      const aftStart     = 14 * 60;
+      const aftEnd       = 18 * 60;
+      return (minutes >= morningStart && minutes < morningEnd) || (minutes >= aftStart && minutes < aftEnd);
     }
 
-    // ========= Timer =========
+    /* ========= Timer ========= */
     function startTimer() {
       const task = document.getElementById('task').value.trim();
       const minutes = parseInt(document.getElementById('duration').value, 10);
@@ -256,11 +381,10 @@
         updateCountdown();
         const remaining = endTime - Date.now();
         if (remaining <= 0 && !hasLoggedCurrent) {
-          // Time's up: notify, log, and stop automatically
           notify(currentTask);
           logSession(currentTask);
           hasLoggedCurrent = true;
-          stopTimer(false); // cleanup without logging again
+          stopTimer(false); // cleanup only
         }
       }, 500);
     }
@@ -306,7 +430,7 @@
       }
     }
 
-    // Log on page unload if finished and not yet logged (belt & suspenders)
+    // Log on page unload if finished and not yet logged
     window.addEventListener('beforeunload', () => {
       try {
         if (!hasLoggedCurrent && startTime && endTime && Date.now() >= endTime) {
@@ -316,7 +440,7 @@
       } catch (e) {}
     });
 
-    // ========= Logging =========
+    /* ========= Logging ========= */
     function logSession(task) {
       if (!startTime) return;
       const start = new Date(startTime);
@@ -343,9 +467,7 @@
       ensureIdsOnLog(log);
       const tbody = document.querySelector('#logTable tbody');
       tbody.innerHTML = '';
-      // Newest first
-      const reversed = log.slice().reverse();
-      reversed.forEach(row => {
+      log.slice().reverse().forEach(row => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${escapeHtml(row.task)}</td>
@@ -353,14 +475,14 @@
           <td class="nowrap">${row.start}</td>
           <td class="nowrap">${row.end}</td>
           <td class="actions-col">
-            <button class="btn-ghost" onclick="openEditModal('${row.id}')">Edit</button>
+            <button class="btn btn-ghost" onclick="openEditModal('${row.id}')">Edit</button>
           </td>
         `;
         tbody.appendChild(tr);
       });
     }
 
-    // ========= Export / Clear =========
+    /* ========= Export / Clear ========= */
     function exportCSV() {
       const log = JSON.parse(localStorage.getItem('time_log') || '[]');
       if (log.length === 0) return alert('No data to export.');
@@ -370,74 +492,57 @@
       const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = 'time_log.csv';
-      a.click();
-      function csvEscape(val){
-        const s = String(val ?? '');
+      a.href = url; a.download = 'time_log.csv'; a.click();
+      function csvEscape(v){
+        const s = String(v ?? '');
         return (s.includes(',') || s.includes('"') || s.includes('\n')) ? '"' + s.replace(/"/g,'""') + '"' : s;
       }
     }
-
     function clearHistory() {
       if (confirm('Are you sure you want to delete all session history?')) {
         localStorage.removeItem('time_log');
         renderLog();
-        markActivity(); // counts as activity
+        markActivity();
         maybeRerenderChart();
       }
     }
 
-    // ========= Toggles =========
+    /* ========= Toggles ========= */
+    function setBadge(el, isOn, labelOn, labelOff){
+      el.textContent = isOn ? labelOn : labelOff;
+      el.classList.remove('on','off'); el.classList.add(isOn ? 'on' : 'off');
+    }
     function toggleMuteSound() {
-      muteSound = !muteSound;
-      localStorage.setItem('muteSound', JSON.stringify(muteSound));
-      const badge = document.getElementById('muteSoundBadge');
+      muteSound = !muteSound; localStorage.setItem('muteSound', JSON.stringify(muteSound));
       document.getElementById('muteSoundBtn').textContent = muteSound ? 'Unmute Sound' : 'Mute Sound';
-      badge.textContent = muteSound ? 'Sound: Off' : 'Sound: On';
-      badge.className = 'muted-badge ' + (muteSound ? 'muted-true' : '');
+      setBadge(document.getElementById('muteSoundBadge'), !muteSound, 'Sound: On', 'Sound: Off');
       if (muteSound) {
         const ding = document.getElementById('ding');
         if (!ding.paused) ding.pause();
         if (dingTimeout) { clearTimeout(dingTimeout); dingTimeout = null; }
       }
     }
-
     function toggleMuteNotifications() {
-      muteNotifications = !muteNotifications;
-      localStorage.setItem('muteNotifications', JSON.stringify(muteNotifications));
-      const badge = document.getElementById('muteNotifBadge');
+      muteNotifications = !muteNotifications; localStorage.setItem('muteNotifications', JSON.stringify(muteNotifications));
       document.getElementById('muteNotifBtn').textContent = muteNotifications ? 'Enable Notifications' : 'Disable Notifications';
-      badge.textContent = muteNotifications ? 'Notifications: Off' : 'Notifications: On';
-      badge.className = 'muted-badge ' + (muteNotifications ? 'muted-true' : '');
+      setBadge(document.getElementById('muteNotifBadge'), !muteNotifications, 'Notifications: On', 'Notifications: Off');
     }
-
     function toggleMuteReminders() {
-      muteReminders = !muteReminders;
-      localStorage.setItem('muteReminders', JSON.stringify(muteReminders));
-      const badge = document.getElementById('muteRemindersBadge');
+      muteReminders = !muteReminders; localStorage.setItem('muteReminders', JSON.stringify(muteReminders));
       document.getElementById('muteRemindersBtn').textContent = muteReminders ? 'Unmute Reminders' : 'Mute Reminders';
-      badge.textContent = muteReminders ? 'Reminders: Off' : 'Reminders: On';
-      badge.className = 'muted-badge ' + (muteReminders ? 'muted-true' : '');
+      setBadge(document.getElementById('muteRemindersBadge'), !muteReminders, 'Reminders: On', 'Reminders: Off');
     }
 
-    // ========= Idle Reminder (cold start–safe, resilient) =========
+    /* ========= Idle Reminder ========= */
     let nextReminderEstimateEl = null;
-
     function ensureNotifPermissionForReminders() {
       if (!muteNotifications && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
         Notification.requestPermission();
       }
     }
-
-    function msSinceLastActivity() {
-      return Date.now() - lastTimerActivity;
-    }
-
+    function msSinceLastActivity() { return Date.now() - lastTimerActivity; }
     function updateNextReminderEstimate() {
-      if (!nextReminderEstimateEl) {
-        nextReminderEstimateEl = document.getElementById('nextReminderETA');
-      }
+      if (!nextReminderEstimateEl) nextReminderEstimateEl = document.getElementById('nextReminderETA');
       const noTimerRunning = (timer === null);
       if (!noTimerRunning || muteReminders || !inParisWorkWindows()) {
         nextReminderEstimateEl.textContent = '';
@@ -446,53 +551,42 @@
       const remainingMs = Math.max(0, (20*60*1000) - msSinceLastActivity());
       const m = String(Math.floor(remainingMs / 60000)).padStart(2,'0');
       const s = String(Math.floor((remainingMs % 60000) / 1000)).padStart(2,'0');
-      nextReminderEstimateEl.textContent =
-        remainingMs === 0 ? 'Reminder eligible now.' : `Next reminder in ~${m}:${s}`;
+      nextReminderEstimateEl.textContent = remainingMs === 0 ? 'Reminder eligible now.' : `Next reminder in ~${m}:${s}`;
     }
-
     function maybeSendIdleReminder() {
       const noTimerRunning = (timer === null);
       if (noTimerRunning && !muteReminders && inParisWorkWindows()) {
         if (msSinceLastActivity() >= 20*60*1000) {
           if (!muteNotifications && typeof Notification !== 'undefined') {
             if (Notification.permission !== 'granted') Notification.requestPermission();
-            if (Notification.permission === 'granted') {
-              new Notification('Reminder: no timer running', { body: 'Start a timer?' });
-            }
+            if (Notification.permission === 'granted') new Notification('Reminder: no timer running', { body: 'Start a timer?' });
           }
-          // Reset so we don’t spam every minute
-          markActivity();
+          markActivity(); // reset so we don’t spam
         }
       }
       updateNextReminderEstimate();
       scheduleNextIdleCheck();
     }
-
     function scheduleNextIdleCheck(delayMs = 60*1000) {
       if (idleCheckHandle) clearTimeout(idleCheckHandle);
       idleCheckHandle = setTimeout(maybeSendIdleReminder, delayMs);
     }
 
-    // ========= Modal: Add/Edit =========
+    /* ========= Modal: Add/Edit ========= */
     function openEditModal(id) {
       const log = JSON.parse(localStorage.getItem('time_log') || '[]');
       const entry = log.find(x => x.id === id);
       if (!entry) return alert('Entry not found.');
-
-      modalMode = 'edit';
-      modalEditingId = id;
+      modalMode = 'edit'; modalEditingId = id;
       document.getElementById('modalTitle').textContent = 'Edit Session';
       document.getElementById('modalDeleteBtn').style.display = '';
       document.getElementById('modalTask').value = entry.task || '';
       document.getElementById('modalStart').value = (entry.start || '').replace(' UTC','');
       document.getElementById('modalEnd').value = (entry.end || '').replace(' UTC','');
-
       openModal();
     }
-
     function openAddModal() {
-      modalMode = 'add';
-      modalEditingId = null;
+      modalMode = 'add'; modalEditingId = null;
       document.getElementById('modalTitle').textContent = 'Add Past Session';
       document.getElementById('modalDeleteBtn').style.display = 'none';
       document.getElementById('modalTask').value = '';
@@ -500,14 +594,8 @@
       document.getElementById('modalEnd').value = '';
       openModal();
     }
-
-    function openModal() {
-      document.getElementById('modalBackdrop').style.display = 'flex';
-    }
-    function closeModal() {
-      document.getElementById('modalBackdrop').style.display = 'none';
-    }
-
+    function openModal(){ document.getElementById('modalBackdrop').style.display = 'grid'; }
+    function closeModal(){ document.getElementById('modalBackdrop').style.display = 'none'; }
     function saveModal() {
       const task = document.getElementById('modalTask').value.trim();
       const startStr = document.getElementById('modalStart').value.trim();
@@ -519,32 +607,21 @@
       if (endDt <= startDt) return alert('End must be after Start.');
 
       const duration = durationStringFromDates(startDt, endDt);
-      const payload = {
-        task,
-        duration,
-        start: formatExcelDateString(startDt) + ' UTC',
-        end: formatExcelDateString(endDt) + ' UTC',
-      };
+      const payload = { task, duration, start: formatExcelDateString(startDt) + ' UTC', end: formatExcelDateString(endDt) + ' UTC' };
 
       const log = JSON.parse(localStorage.getItem('time_log') || '[]');
       ensureIdsOnLog(log);
-
       if (modalMode === 'edit') {
         const idx = findLogIndexById(modalEditingId);
         if (idx === -1) return alert('Entry not found.');
-        payload.id = log[idx].id;
-        log[idx] = payload;
+        payload.id = log[idx].id; log[idx] = payload;
       } else {
         payload.id = 's_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
         log.push(payload);
       }
-
       localStorage.setItem('time_log', JSON.stringify(log));
-      closeModal();
-      renderLog();
-      maybeRerenderChart();
+      closeModal(); renderLog(); maybeRerenderChart();
     }
-
     function deleteSessionFromModal() {
       if (!confirm('Delete this session?')) return;
       const log = JSON.parse(localStorage.getItem('time_log') || '[]');
@@ -552,115 +629,72 @@
       if (idx === -1) return alert('Entry not found.');
       log.splice(idx, 1);
       localStorage.setItem('time_log', JSON.stringify(log));
-      closeModal();
-      renderLog();
-      maybeRerenderChart();
+      closeModal(); renderLog(); maybeRerenderChart();
     }
 
-    // ========= Chart: Last Five Weekdays =========
-
+    /* ========= Chart: Last Five Weekdays ========= */
     function toggleChart() {
       const wrap = document.getElementById('chartWrap');
-      if (wrap.style.display === 'none' || wrap.style.display === '') {
-        wrap.style.display = 'block';
-        renderBarChartForLastFiveWeekdays();
-      } else {
-        wrap.style.display = 'none';
-      }
+      if (wrap.style.display === 'none' || wrap.style.display === '') { wrap.style.display = 'block'; renderBarChartForLastFiveWeekdays(); }
+      else { wrap.style.display = 'none'; }
     }
-
     function maybeRerenderChart() {
       const wrap = document.getElementById('chartWrap');
-      if (wrap.style.display !== 'none') {
-        renderBarChartForLastFiveWeekdays();
-      }
+      if (wrap.style.display !== 'none') renderBarChartForLastFiveWeekdays();
     }
-
     function parseDurationToMinutes(durStr) {
-      // "MM:SS"
       const [m, s] = String(durStr).split(':').map(x => parseInt(x, 10) || 0);
       return m + s / 60;
     }
-
     function parisDateKeyFromUTCString(utcStr) {
-      // 'YYYY-MM-DD HH:MM:SS UTC' -> Date -> Paris YYYY-MM-DD
       const raw = utcStr.replace(' UTC', '').replace(' ', 'T') + 'Z';
       const d = new Date(raw);
       const paris = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' });
       return paris.format(d); // YYYY-MM-DD
     }
-
-    function getParisTodayDate() {
-      const nowParis = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
-      const yyyy = nowParis.getFullYear();
-      const mm = String(nowParis.getMonth() + 1).padStart(2, '0');
-      const dd = String(nowParis.getDate()).padStart(2, '0');
-      return `${yyyy}-${mm}-${dd}`;
-    }
-
-    function isWeekday(dateObj) {
-      const day = dateObj.getDay(); // 0 Sun .. 6 Sat
-      return day >= 1 && day <= 5;
-    }
-
+    function isWeekday(dateObj){ const day = dateObj.getDay(); return day >= 1 && day <= 5; }
     function getLastNWeekdays(n) {
-      // Returns array of YYYY-MM-DD (Paris), newest last (chronological)
       const out = [];
       let cursor = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
-      // normalize time
-      cursor.setHours(12, 0, 0, 0);
+      cursor.setHours(12,0,0,0);
       while (out.length < n) {
         if (isWeekday(cursor)) {
-          const y = cursor.getFullYear();
-          const m = String(cursor.getMonth() + 1).padStart(2, '0');
-          const d = String(cursor.getDate()).padStart(2, '0');
+          const y = cursor.getFullYear(), m = String(cursor.getMonth()+1).padStart(2,'0'), d = String(cursor.getDate()).padStart(2,'0');
           out.push(`${y}-${m}-${d}`);
         }
-        cursor.setDate(cursor.getDate() - 1);
+        cursor.setDate(cursor.getDate()-1);
       }
-      return out.reverse(); // oldest -> newest for chart X axis
+      return out.reverse();
     }
-
     function totalsForDates(dateKeys) {
-      // Build map {dateKey: minutes}
-      const totals = {};
-      dateKeys.forEach(k => totals[k] = 0);
+      const totals = {}; dateKeys.forEach(k => totals[k] = 0);
       const log = JSON.parse(localStorage.getItem('time_log') || '[]');
-
       for (const row of log) {
         if (!row.start || !row.duration) continue;
         const key = parisDateKeyFromUTCString(row.start);
-        if (key in totals) {
-          totals[key] += parseDurationToMinutes(row.duration);
-        }
+        if (key in totals) totals[key] += parseDurationToMinutes(row.duration);
       }
       return totals;
     }
-
     function renderBarChartForLastFiveWeekdays() {
-      const dates = getLastNWeekdays(5); // ['YYYY-MM-DD', ...]
-      const totals = totalsForDates(dates); // minutes per day
-      const labels = dates.map(d => d.slice(5)); // 'MM-DD' for axis
-      const values = dates.map(d => Math.round((totals[d] || 0) * 10) / 10); // minutes, 0.1 precision
-
+      const dates = getLastNWeekdays(5);
+      const totals = totalsForDates(dates);
+      const labels = dates.map(d => d.slice(5));
+      const values = dates.map(d => Math.round((totals[d] || 0) * 10) / 10);
       drawBars(labels, values);
     }
-
     function drawBars(labels, values) {
       const canvas = document.getElementById('barChart');
       const ctx = canvas.getContext('2d');
       const W = canvas.width, H = canvas.height;
 
-      // Clear
-      ctx.clearRect(0, 0, W, H);
-
-      // Margins
-      const margin = { left: 50, right: 20, top: 20, bottom: 50 };
+      ctx.clearRect(0,0,W,H);
+      const margin = { left: 56, right: 24, top: 28, bottom: 56 };
       const chartW = W - margin.left - margin.right;
       const chartH = H - margin.top - margin.bottom;
 
-      // Axis
-      ctx.strokeStyle = '#444';
+      // Axes
+      ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--border');
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(margin.left, margin.top);
@@ -670,94 +704,74 @@
 
       // Scale
       const maxVal = Math.max(0, ...values);
-      const niceMax = maxVal === 0 ? 60 : Math.ceil(maxVal / 30) * 30; // round to nearest 30 min
+      const niceMax = maxVal === 0 ? 60 : Math.ceil(maxVal / 30) * 30;
       const toY = (v) => margin.top + chartH - (v / niceMax) * chartH;
 
-      // Y ticks (every 30 min)
-      ctx.fillStyle = '#666';
-      ctx.font = '12px sans-serif';
-      const step = 30; // minutes
-      for (let y = 0; y <= niceMax; y += step) {
+      // Grid + Y labels
+      const textColor = getComputedStyle(document.body).getPropertyValue('--muted');
+      ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Inter, Helvetica, Arial, sans-serif';
+      for (let y=0; y<=niceMax; y+=30) {
         const yy = toY(y);
-        ctx.strokeStyle = '#eee';
-        ctx.beginPath();
-        ctx.moveTo(margin.left, yy);
-        ctx.lineTo(margin.left + chartW, yy);
-        ctx.stroke();
-
-        ctx.fillStyle = '#666';
-        const hrs = Math.floor(y / 60);
-        const mins = y % 60;
-        const label = hrs > 0 ? `${hrs}h${String(mins).padStart(2,'0')}` : `${mins}m`;
-        ctx.fillText(label, 6, yy + 4);
+        ctx.strokeStyle = 'rgba(125,125,125,.12)';
+        ctx.beginPath(); ctx.moveTo(margin.left, yy); ctx.lineTo(margin.left + chartW, yy); ctx.stroke();
+        ctx.fillStyle = textColor;
+        const hrs = Math.floor(y/60), mins = y%60;
+        const label = hrs>0 ? `${hrs}h${String(mins).padStart(2,'0')}` : `${mins}m`;
+        ctx.fillText(label, 8, yy+4);
       }
 
       // Bars
-      const n = labels.length;
-      const gap = 16;
-      const barW = Math.min(60, (chartW - gap * (n + 1)) / n);
+      const n = labels.length; const gap = 18;
+      const barW = Math.min(72, (chartW - gap*(n+1)) / n);
       let x = margin.left + gap;
 
-      ctx.textAlign = 'center';
-      for (let i = 0; i < n; i++) {
-        const v = values[i];
-        const y = toY(v);
-        const h = (margin.top + chartH) - y;
+      // Palette (light/dark friendly, no explicit colors requested)
+      const barFill = getComputedStyle(document.body).getPropertyValue('--primary');
+      const barStroke = getComputedStyle(document.body).getPropertyValue('--primary-600');
 
-        ctx.fillStyle = '#89a';
-        ctx.fillRect(x, y, barW, h);
+      for (let i=0;i<n;i++){
+        const v = values[i], y = toY(v), h = (margin.top+chartH) - y;
+        // bar
+        ctx.fillStyle = barFill; ctx.globalAlpha = .85; ctx.fillRect(x, y, barW, h); ctx.globalAlpha = 1;
+        ctx.strokeStyle = barStroke; ctx.strokeRect(x+.5, y+.5, barW-1, h-1);
 
-        // value label (HH:MM)
-        ctx.fillStyle = '#222';
+        // value label
+        ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text');
         const totMin = Math.round(v);
-        const hh = Math.floor(totMin / 60);
-        const mm = totMin % 60;
-        const valLabel = hh > 0 ? `${hh}:${String(mm).padStart(2,'0')}` : `${mm}m`;
-        ctx.font = '12px sans-serif';
-        if (h > 18) {
-          // inside bar
-          ctx.fillStyle = '#fff';
-          ctx.fillText(valLabel, x + barW / 2, y + 14);
-        } else {
-          // above bar
-          ctx.fillStyle = '#333';
-          ctx.fillText(valLabel, x + barW / 2, y - 4);
-        }
+        const hh = Math.floor(totMin/60), mm = totMin%60;
+        const valLabel = hh>0 ? `${hh}:${String(mm).padStart(2,'0')}` : `${mm}m`;
+        if (h>18){ ctx.fillStyle = '#fff'; ctx.fillText(valLabel, x+barW/2, y+14); }
+        else { ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text'); ctx.fillText(valLabel, x+barW/2, y-6); }
 
-        // x labels
-        ctx.fillStyle = '#333';
-        ctx.fillText(labels[i], x + barW / 2, margin.top + chartH + 18);
+        // x label
+        ctx.fillStyle = textColor;
+        ctx.textAlign = 'center';
+        ctx.fillText(labels[i], x+barW/2, margin.top+chartH+18);
 
         x += barW + gap;
       }
 
-      // Axis title
-      ctx.fillStyle = '#333';
-      ctx.font = '13px sans-serif';
-      ctx.fillText('Minutes tracked per day (Paris time)', margin.left + chartW / 2, margin.top - 6);
+      // Title
+      ctx.fillStyle = textColor;
+      ctx.fillText('Minutes tracked per day (Paris time)', margin.left + chartW/2, margin.top-8);
     }
 
-    // ========= Init =========
+    /* ========= Init ========= */
     (function initUI(){
+      // Button labels + badges
       document.getElementById('muteSoundBtn').textContent = muteSound ? 'Unmute Sound' : 'Mute Sound';
-      document.getElementById('muteSoundBadge').textContent = muteSound ? 'Sound: Off' : 'Sound: On';
-      document.getElementById('muteSoundBadge').className = 'muted-badge ' + (muteSound ? 'muted-true' : '');
+      setBadge(document.getElementById('muteSoundBadge'), !muteSound, 'Sound: On', 'Sound: Off');
 
       document.getElementById('muteNotifBtn').textContent = muteNotifications ? 'Enable Notifications' : 'Disable Notifications';
-      document.getElementById('muteNotifBadge').textContent = muteNotifications ? 'Notifications: Off' : 'Notifications: On';
-      document.getElementById('muteNotifBadge').className = 'muted-badge ' + (muteNotifications ? 'muted-true' : '');
+      setBadge(document.getElementById('muteNotifBadge'), !muteNotifications, 'Notifications: On', 'Notifications: Off');
 
       document.getElementById('muteRemindersBtn').textContent = muteReminders ? 'Unmute Reminders' : 'Mute Reminders';
-      document.getElementById('muteRemindersBadge').textContent = muteReminders ? 'Reminders: Off' : 'Reminders: On';
-      document.getElementById('muteRemindersBadge').className = 'muted-badge ' + (muteReminders ? 'muted-true' : '');
+      setBadge(document.getElementById('muteRemindersBadge'), !muteReminders, 'Reminders: On', 'Reminders: Off');
 
-      if (!localStorage.getItem('lastTimerActivity')) {
-        markActivity();
-      } else {
-        lastTimerActivity = parseInt(localStorage.getItem('lastTimerActivity'), 10) || Date.now();
-      }
+      if (!localStorage.getItem('lastTimerActivity')) { markActivity(); }
+      else { lastTimerActivity = parseInt(localStorage.getItem('lastTimerActivity'), 10) || Date.now(); }
 
-      // Ask for permission early so cold-start reminders work
+      // Ask early so idle reminders work from a cold start
       if (!muteNotifications && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
         Notification.requestPermission();
       }
@@ -772,12 +786,14 @@
         if (!document.hidden) scheduleNextIdleCheck(2*1000);
       });
 
-      // Modal close hooks
-      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
-      document.getElementById('modalBackdrop').addEventListener('click', (e) => {
+      // Close modal on ESC or backdrop click
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+      document.getElementById('modalBackdrop').addEventListener('click', e => {
         if (e.target.id === 'modalBackdrop') closeModal();
       });
     })();
   </script>
+
+  <audio id="ding" src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" preload="auto"></audio>
 </body>
 </html>
