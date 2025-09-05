@@ -37,6 +37,9 @@
       }
     }
 
+    /* NEW: prevent overflow & help centering */
+    *, *::before, *::after { box-sizing: border-box; }
+
     /* ===== Layout & basics ===== */
     html,body{height:100%}
     body{
@@ -47,7 +50,9 @@
         var(--bg);
     }
     .container{
-      max-width: 980px; margin: 28px auto; padding: 0 16px;
+      max-width: 1100px;           /* centered page */
+      margin: 28px auto;
+      padding: 0 16px;
     }
     .header{
       display:flex; align-items: center; gap:14px; margin-bottom: 18px;
@@ -66,7 +71,12 @@
       grid-template-columns: 1fr;
     }
     @media (min-width: 980px){
-      .grid{ grid-template-columns: 420px 1fr; }
+      .grid{
+        grid-template-columns: minmax(340px, 420px) minmax(520px, 640px);
+        justify-content: center;   /* center the tracks */
+        max-width: 1080px;         /* keep the block visually centered */
+        margin-inline: auto;
+      }
     }
 
     .card{
@@ -99,9 +109,7 @@
       background: linear-gradient(180deg, var(--primary), var(--primary-600));
       border-color: transparent; color: white;
     }
-    .btn-ghost{
-      background: transparent;
-    }
+    .btn-ghost{ background: transparent; }
     .btn-warn{
       border-color: color-mix(in oklab, var(--warn), black 10%);
       color: var(--warn);
@@ -488,7 +496,7 @@
       if (log.length === 0) return alert('No data to export.');
       const header = ['Task', 'Duration', 'Start (UTC)', 'End (UTC)'];
       const rows = log.map(r => [r.task, r.duration, r.start, r.end]);
-      const csv = [header.join(','), ...rows.map(r => r.map(csvEscape).join(',')).join('\n')].join('\n');
+      const csv = [header.join(','), ...rows.map(r => r.map(csvEscape).join(','))].join('\n'); /* fixed */
       const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -725,34 +733,29 @@
       const barW = Math.min(72, (chartW - gap*(n+1)) / n);
       let x = margin.left + gap;
 
-      // Palette (light/dark friendly, no explicit colors requested)
       const barFill = getComputedStyle(document.body).getPropertyValue('--primary');
       const barStroke = getComputedStyle(document.body).getPropertyValue('--primary-600');
 
       for (let i=0;i<n;i++){
         const v = values[i], y = toY(v), h = (margin.top+chartH) - y;
-        // bar
         ctx.fillStyle = barFill; ctx.globalAlpha = .85; ctx.fillRect(x, y, barW, h); ctx.globalAlpha = 1;
         ctx.strokeStyle = barStroke; ctx.strokeRect(x+.5, y+.5, barW-1, h-1);
 
-        // value label
-        ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text');
         const totMin = Math.round(v);
         const hh = Math.floor(totMin/60), mm = totMin%60;
         const valLabel = hh>0 ? `${hh}:${String(mm).padStart(2,'0')}` : `${mm}m`;
+        ctx.textAlign = 'center';
         if (h>18){ ctx.fillStyle = '#fff'; ctx.fillText(valLabel, x+barW/2, y+14); }
         else { ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text'); ctx.fillText(valLabel, x+barW/2, y-6); }
 
-        // x label
-        ctx.fillStyle = textColor;
-        ctx.textAlign = 'center';
+        const textColor2 = getComputedStyle(document.body).getPropertyValue('--muted');
+        ctx.fillStyle = textColor2;
         ctx.fillText(labels[i], x+barW/2, margin.top+chartH+18);
 
         x += barW + gap;
       }
 
-      // Title
-      ctx.fillStyle = textColor;
+      ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--muted');
       ctx.fillText('Minutes tracked per day (Paris time)', margin.left + chartW/2, margin.top-8);
     }
 
@@ -793,7 +796,5 @@
       });
     })();
   </script>
-
-  <audio id="ding" src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" preload="auto"></audio>
 </body>
 </html>
