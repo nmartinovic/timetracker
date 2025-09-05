@@ -108,7 +108,7 @@ FILE: index.html
   <style>
     body {
       font-family: sans-serif;
-      max-width: 600px;
+      max-width: 720px;
       margin: 30px auto;
       padding: 20px;
       background: #f9f9f9;
@@ -121,14 +121,30 @@ FILE: index.html
       margin: 5px 0;
       font-size: 1rem;
     }
-    .timer-controls, .log { margin-top: 20px; }
+    .timer-controls, .log, .admin { margin-top: 20px; }
     .log-table { width: 100%; border-collapse: collapse; }
     .log-table th, .log-table td { padding: 8px; border: 1px solid #ccc; text-align: left; }
     .button-group { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
     .muted-badge { font-size: 0.9rem; padding: 2px 8px; border-radius: 999px; background: #eee; color: #555; display: inline-block; margin-left: 6px; }
     .muted-true { background: #ffe2e2; color: #b00020; }
-    #extendBtn { display: none; }
     #nextReminderETA { font-size: 0.9rem; color: #666; margin-top: 6px; }
+    /* Simple modal */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.35);
+      display: none; align-items: center; justify-content: center; z-index: 999;
+    }
+    .modal {
+      background: #fff; border-radius: 10px; padding: 16px; width: 100%; max-width: 520px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+    }
+    .modal h3 { margin-top: 0; }
+    .modal .row { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: center; margin-bottom: 10px; }
+    .modal .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+    .help { font-size: 0.85rem; color: #666; }
+    .actions-col { white-space: nowrap; }
+    .btn-ghost { background: transparent; border: 1px solid #ccc; border-radius: 6px; padding: 6px 10px; }
+    .btn-warn { background: #ffecec; border-color: #ffb3b3; color: #b00020; }
+    .nowrap { white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -144,7 +160,6 @@ FILE: index.html
   <div class="button-group">
     <button onclick="startTimer()">Start</button>
     <button onclick="stopTimer(true)">Stop</button>
-    <button id="extendBtn" onclick="extendTimer()">Extend Timer</button>
 
     <button onclick="exportCSV()">Export CSV</button>
     <button onclick="clearHistory()">Clear History</button>
@@ -159,9 +174,13 @@ FILE: index.html
     <span id="muteRemindersBadge" class="muted-badge">Reminders: On</span>
   </div>
 
+  <div class="admin">
+    <button class="btn-ghost" onclick="openAddModal()">Add Past Session</button>
+    <span class="help">Add/edit uses <span class="nowrap"><code>YYYY-MM-DD HH:MM:SS</code></span> in UTC.</span>
+  </div>
+
   <div class="timer-controls">
     <h2 id="countdown">00:00</h2>
-    <!-- Optional helper text for idle reminder window -->
     <div id="nextReminderETA"></div>
   </div>
 
@@ -171,13 +190,39 @@ FILE: index.html
       <thead>
         <tr>
           <th>Task</th>
-          <th>Duration</th>
+          <th class="nowrap">Duration</th>
           <th>Start (UTC)</th>
           <th>End (UTC)</th>
+          <th class="actions-col">Actions</th>
         </tr>
       </thead>
       <tbody></tbody>
     </table>
+  </div>
+
+  <!-- Edit/Add Modal -->
+  <div id="modalBackdrop" class="modal-backdrop">
+    <div class="modal">
+      <h3 id="modalTitle">Edit Session</h3>
+      <div class="row">
+        <label for="modalTask">Task</label>
+        <input id="modalTask" type="text" placeholder="Task name" />
+      </div>
+      <div class="row">
+        <label for="modalStart">Start (UTC)</label>
+        <input id="modalStart" type="text" placeholder="YYYY-MM-DD HH:MM:SS" />
+      </div>
+      <div class="row">
+        <label for="modalEnd">End (UTC)</label>
+        <input id="modalEnd" type="text" placeholder="YYYY-MM-DD HH:MM:SS" />
+      </div>
+      <div class="help">Times must be UTC, e.g. <code>2025-03-01 09:30:00</code>.</div>
+      <div class="actions">
+        <button class="btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn-ghost btn-warn" id="modalDeleteBtn" onclick="deleteSessionFromModal()" style="display:none">Delete</button>
+        <button onclick="saveModal()">Save</button>
+      </div>
+    </div>
   </div>
 
   <audio id="ding" src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" preload="auto"></audio>
@@ -200,9 +245,12 @@ FILE: index.html
     let lastTimerActivity = parseInt(localStorage.getItem('lastTimerActivity') || String(Date.now()), 10);
     let idleCheckHandle = null;
 
-    // Overtime after 0:00
-    let isOvertime = false;
-    let atZeroHandled = false;
+    // Logging guard to avoid duplicates
+    let hasLoggedCurrent = false;
+
+    // Modal state
+    let modalMode = 'edit'; // 'edit' | 'add'
+    let modalEditingId = null;
 
     // ========= Helpers =========
     function markActivity() {
@@ -211,16 +259,49 @@ FILE: index.html
     }
 
     function formatTime(ms) {
-      const sign = ms < 0 ? -1 : 1;
       const totalSeconds = Math.max(0, Math.floor(Math.abs(ms) / 1000));
       const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
       const seconds = String(totalSeconds % 60).padStart(2, '0');
-      return (sign < 0 ? '-' : '') + `${minutes}:${seconds}`;
+      return `${minutes}:${seconds}`;
     }
 
     function formatExcelDateString(dateObj) {
       // 'YYYY-MM-DD HH:MM:SS'
       return dateObj.toISOString().replace('T', ' ').split('.')[0];
+    }
+
+    function parseUTCString(s) {
+      // Expect 'YYYY-MM-DD HH:MM:SS'
+      const m = s.trim().match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/);
+      if (!m) return null;
+      const [_, Y,M,D,h,mn,sc] = m;
+      const ms = Date.UTC(+Y, +M-1, +D, +h, +mn, +sc);
+      const dt = new Date(ms);
+      return isNaN(dt.getTime()) ? null : dt;
+    }
+
+    function durationStringFromDates(startDt, endDt) {
+      const ms = Math.max(0, endDt - startDt);
+      const minutes = Math.floor(ms / 60000);
+      const seconds = Math.floor((ms % 60000) / 1000);
+      return `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
+    }
+
+    function ensureIdsOnLog(log) {
+      let changed = false;
+      log.forEach(item => {
+        if (!item.id) { item.id = 's_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); changed = true; }
+      });
+      if (changed) localStorage.setItem('time_log', JSON.stringify(log));
+    }
+
+    function findLogIndexById(id) {
+      const log = JSON.parse(localStorage.getItem('time_log') || '[]');
+      return log.findIndex(x => x.id === id);
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
     // Work windows: 09:30–13:00 and 14:00–18:00 (Europe/Paris, DST-safe)
@@ -247,9 +328,7 @@ FILE: index.html
       endTime = startTime + minutes * 60000;
       currentTask = task;
       currentDuration = minutes;
-      isOvertime = false;
-      atZeroHandled = false;
-      document.getElementById('extendBtn').style.display = 'none';
+      hasLoggedCurrent = false;
 
       updateCountdown();
       markActivity();
@@ -262,35 +341,30 @@ FILE: index.html
       timer = setInterval(() => {
         updateCountdown();
         const remaining = endTime - Date.now();
-        if (remaining <= 0 && !atZeroHandled) {
-          atZeroHandled = true;
+        if (remaining <= 0 && !hasLoggedCurrent) {
+          // Time's up: notify, log, and stop automatically
           notify(currentTask);
-          // Show extend button (do not stop/log yet)
-          document.getElementById('extendBtn').style.display = 'inline-block';
+          logSession(currentTask);
+          hasLoggedCurrent = true;
+          stopTimer(false); // cleanup without logging again
         }
       }, 500);
-    }
-
-    function extendTimer() {
-      if (!endTime) return;
-      isOvertime = true;
-      document.getElementById('extendBtn').style.display = 'none';
-      updateCountdown();
     }
 
     function stopTimer(log = false) {
       clearInterval(timer);
       timer = null;
-      if (log && currentTask && startTime) {
+
+      if (log && !hasLoggedCurrent && currentTask && startTime) {
         logSession(currentTask);
+        hasLoggedCurrent = true;
       }
+
       endTime = null;
       startTime = null;
       currentTask = null;
       currentDuration = null;
-      isOvertime = false;
-      atZeroHandled = false;
-      document.getElementById('extendBtn').style.display = 'none';
+
       document.getElementById('countdown').textContent = '00:00';
       document.title = 'Time Tracker';
       markActivity();
@@ -299,16 +373,10 @@ FILE: index.html
     function updateCountdown() {
       if (!endTime) return;
       const now = Date.now();
-      let displayText = '';
-      if (isOvertime) {
-        const overtime = now - endTime; // count up
-        displayText = '+' + formatTime(overtime);
-      } else {
-        const remaining = Math.max(0, endTime - now);
-        displayText = formatTime(remaining);
-      }
-      document.getElementById('countdown').textContent = displayText;
-      document.title = `${displayText} - Time Tracker`;
+      const remaining = Math.max(0, endTime - now);
+      const timeString = formatTime(remaining);
+      document.getElementById('countdown').textContent = timeString;
+      document.title = `${timeString} - Time Tracker`;
     }
 
     function notify(task) {
@@ -318,31 +386,32 @@ FILE: index.html
         ding.play();
         dingTimeout = setTimeout(() => { try { ding.pause(); } catch(e){} }, 3000);
       }
-
-      // In-page extend button is shown in startTimer loop; make OS notification clickable to extend too
       if (!muteNotifications && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        const n = new Notification('Time is up!', { body: `Task: ${task}\n(click to extend)` });
-        n.onclick = () => {
-          try { window.focus(); } catch(e) {}
-          extendTimer();
-          try { n.close(); } catch(e) {}
-        };
+        new Notification('Time is up!', { body: `Task: ${task}` });
       }
     }
+
+    // Log on page unload if finished and not yet logged (belt & suspenders)
+    window.addEventListener('beforeunload', () => {
+      try {
+        if (!hasLoggedCurrent && startTime && endTime && Date.now() >= endTime) {
+          logSession(currentTask);
+          hasLoggedCurrent = true;
+        }
+      } catch (e) {}
+    });
 
     // ========= Logging =========
     function logSession(task) {
       if (!startTime) return;
       const start = new Date(startTime);
       const end = new Date();
-      const actualDurationMs = end - start;
-      const minutes = Math.floor(actualDurationMs / 60000);
-      const seconds = Math.floor((actualDurationMs % 60000) / 1000);
-      const durationString = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      const duration = durationStringFromDates(start, end);
 
       const session = {
+        id: 's_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
         task,
-        duration: durationString,
+        duration,
         start: formatExcelDateString(start) + ' UTC',
         end: formatExcelDateString(end) + ' UTC',
       };
@@ -355,12 +424,22 @@ FILE: index.html
 
     function renderLog() {
       const log = JSON.parse(localStorage.getItem('time_log') || '[]');
+      ensureIdsOnLog(log);
       const tbody = document.querySelector('#logTable tbody');
       tbody.innerHTML = '';
       // Newest first
-      log.slice().reverse().forEach(row => {
+      const reversed = log.slice().reverse();
+      reversed.forEach(row => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${row.task}</td><td>${row.duration}</td><td>${row.start}</td><td>${row.end}</td>`;
+        tr.innerHTML = `
+          <td>${escapeHtml(row.task)}</td>
+          <td class="nowrap">${row.duration}</td>
+          <td class="nowrap">${row.start}</td>
+          <td class="nowrap">${row.end}</td>
+          <td class="actions-col">
+            <button class="btn-ghost" onclick="openEditModal('${row.id}')">Edit</button>
+          </td>
+        `;
         tbody.appendChild(tr);
       });
     }
@@ -371,13 +450,17 @@ FILE: index.html
       if (log.length === 0) return alert('No data to export.');
       const header = ['Task', 'Duration', 'Start (UTC)', 'End (UTC)'];
       const rows = log.map(r => [r.task, r.duration, r.start, r.end]);
-      const csv = [header.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const csv = [header.join(','), ...rows.map(r => r.map(csvEscape).join(',')).join('\n')].join('\n');
       const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = 'time_log.csv';
       a.click();
+      function csvEscape(val){
+        const s = String(val ?? '');
+        return (s.includes(',') || s.includes('"') || s.includes('\n')) ? '"' + s.replace(/"/g,'""') + '"' : s;
+      }
     }
 
     function clearHistory() {
@@ -473,6 +556,88 @@ FILE: index.html
       idleCheckHandle = setTimeout(maybeSendIdleReminder, delayMs);
     }
 
+    // ========= Modal: Add/Edit =========
+    function openEditModal(id) {
+      const log = JSON.parse(localStorage.getItem('time_log') || '[]');
+      const entry = log.find(x => x.id === id);
+      if (!entry) return alert('Entry not found.');
+
+      modalMode = 'edit';
+      modalEditingId = id;
+      document.getElementById('modalTitle').textContent = 'Edit Session';
+      document.getElementById('modalDeleteBtn').style.display = '';
+      document.getElementById('modalTask').value = entry.task || '';
+      document.getElementById('modalStart').value = (entry.start || '').replace(' UTC','');
+      document.getElementById('modalEnd').value = (entry.end || '').replace(' UTC','');
+
+      openModal();
+    }
+
+    function openAddModal() {
+      modalMode = 'add';
+      modalEditingId = null;
+      document.getElementById('modalTitle').textContent = 'Add Past Session';
+      document.getElementById('modalDeleteBtn').style.display = 'none';
+      document.getElementById('modalTask').value = '';
+      document.getElementById('modalStart').value = '';
+      document.getElementById('modalEnd').value = '';
+      openModal();
+    }
+
+    function openModal() {
+      document.getElementById('modalBackdrop').style.display = 'flex';
+    }
+    function closeModal() {
+      document.getElementById('modalBackdrop').style.display = 'none';
+    }
+
+    function saveModal() {
+      const task = document.getElementById('modalTask').value.trim();
+      const startStr = document.getElementById('modalStart').value.trim();
+      const endStr = document.getElementById('modalEnd').value.trim();
+      if (!task) return alert('Task is required.');
+      const startDt = parseUTCString(startStr);
+      const endDt = parseUTCString(endStr);
+      if (!startDt || !endDt) return alert('Please enter valid UTC times: YYYY-MM-DD HH:MM:SS');
+      if (endDt <= startDt) return alert('End must be after Start.');
+
+      const duration = durationStringFromDates(startDt, endDt);
+      const payload = {
+        task,
+        duration,
+        start: formatExcelDateString(startDt) + ' UTC',
+        end: formatExcelDateString(endDt) + ' UTC',
+      };
+
+      const log = JSON.parse(localStorage.getItem('time_log') || '[]');
+      ensureIdsOnLog(log);
+
+      if (modalMode === 'edit') {
+        const idx = findLogIndexById(modalEditingId);
+        if (idx === -1) return alert('Entry not found.');
+        payload.id = log[idx].id;
+        log[idx] = payload;
+      } else {
+        payload.id = 's_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+        log.push(payload);
+      }
+
+      localStorage.setItem('time_log', JSON.stringify(log));
+      closeModal();
+      renderLog();
+    }
+
+    function deleteSessionFromModal() {
+      if (!confirm('Delete this session?')) return;
+      const log = JSON.parse(localStorage.getItem('time_log') || '[]');
+      const idx = findLogIndexById(modalEditingId);
+      if (idx === -1) return alert('Entry not found.');
+      log.splice(idx, 1);
+      localStorage.setItem('time_log', JSON.stringify(log));
+      closeModal();
+      renderLog();
+    }
+
     // ========= Init =========
     (function initUI(){
       document.getElementById('muteSoundBtn').textContent = muteSound ? 'Unmute Sound' : 'Mute Sound';
@@ -487,24 +652,31 @@ FILE: index.html
       document.getElementById('muteRemindersBadge').textContent = muteReminders ? 'Reminders: Off' : 'Reminders: On';
       document.getElementById('muteRemindersBadge').className = 'muted-badge ' + (muteReminders ? 'muted-true' : '');
 
-      // Keep existing last activity if present; otherwise set baseline now
       if (!localStorage.getItem('lastTimerActivity')) {
         markActivity();
       } else {
         lastTimerActivity = parseInt(localStorage.getItem('lastTimerActivity'), 10) || Date.now();
       }
 
-      ensureNotifPermissionForReminders();   // ask early so cold-start reminders can fire
+      // Ask for permission early so cold-start reminders work
+      if (!muteNotifications && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+        Notification.requestPermission();
+      }
+
       renderLog();
 
       // Kick off idle reminder loop
       updateNextReminderEstimate();
       scheduleNextIdleCheck(60*1000);
-
-      // Nudge loop when tab becomes visible again
       document.addEventListener('visibilitychange', () => {
         updateNextReminderEstimate();
         if (!document.hidden) scheduleNextIdleCheck(2*1000);
+      });
+
+      // Close modal on ESC or backdrop click
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+      document.getElementById('modalBackdrop').addEventListener('click', (e) => {
+        if (e.target.id === 'modalBackdrop') closeModal();
       });
     })();
   </script>

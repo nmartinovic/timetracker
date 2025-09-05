@@ -44,6 +44,12 @@
     .btn-ghost { background: transparent; border: 1px solid #ccc; border-radius: 6px; padding: 6px 10px; }
     .btn-warn { background: #ffecec; border-color: #ffb3b3; color: #b00020; }
     .nowrap { white-space: nowrap; }
+
+    /* Chart area */
+    .chart-controls { margin-top: 12px; display: flex; gap: 10px; align-items: center; }
+    #chartWrap { margin-top: 12px; display: none; }
+    #barChart { width: 100%; max-width: 680px; height: 260px; border: 1px solid #ddd; background: #fff; border-radius: 8px; }
+    .chart-note { font-size: 0.85rem; color: #666; margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -76,6 +82,15 @@
   <div class="admin">
     <button class="btn-ghost" onclick="openAddModal()">Add Past Session</button>
     <span class="help">Add/edit uses <span class="nowrap"><code>YYYY-MM-DD HH:MM:SS</code></span> in UTC.</span>
+
+    <div class="chart-controls">
+      <button class="btn-ghost" onclick="toggleChart()">Show Chart</button>
+      <span class="help">Bar chart: total tracked per day for the last five weekdays (Paris time).</span>
+    </div>
+    <div id="chartWrap">
+      <canvas id="barChart" width="680" height="260"></canvas>
+      <div class="chart-note">Totals grouped by <strong>Europe/Paris</strong> day using each session’s <em>start time</em>.</div>
+    </div>
   </div>
 
   <div class="timer-controls">
@@ -267,6 +282,7 @@
       document.getElementById('countdown').textContent = '00:00';
       document.title = 'Time Tracker';
       markActivity();
+      maybeRerenderChart();
     }
 
     function updateCountdown() {
@@ -319,6 +335,7 @@
       log.push(session);
       localStorage.setItem('time_log', JSON.stringify(log));
       renderLog();
+      maybeRerenderChart();
     }
 
     function renderLog() {
@@ -367,6 +384,7 @@
         localStorage.removeItem('time_log');
         renderLog();
         markActivity(); // counts as activity
+        maybeRerenderChart();
       }
     }
 
@@ -524,6 +542,7 @@
       localStorage.setItem('time_log', JSON.stringify(log));
       closeModal();
       renderLog();
+      maybeRerenderChart();
     }
 
     function deleteSessionFromModal() {
@@ -535,6 +554,187 @@
       localStorage.setItem('time_log', JSON.stringify(log));
       closeModal();
       renderLog();
+      maybeRerenderChart();
+    }
+
+    // ========= Chart: Last Five Weekdays =========
+
+    function toggleChart() {
+      const wrap = document.getElementById('chartWrap');
+      if (wrap.style.display === 'none' || wrap.style.display === '') {
+        wrap.style.display = 'block';
+        renderBarChartForLastFiveWeekdays();
+      } else {
+        wrap.style.display = 'none';
+      }
+    }
+
+    function maybeRerenderChart() {
+      const wrap = document.getElementById('chartWrap');
+      if (wrap.style.display !== 'none') {
+        renderBarChartForLastFiveWeekdays();
+      }
+    }
+
+    function parseDurationToMinutes(durStr) {
+      // "MM:SS"
+      const [m, s] = String(durStr).split(':').map(x => parseInt(x, 10) || 0);
+      return m + s / 60;
+    }
+
+    function parisDateKeyFromUTCString(utcStr) {
+      // 'YYYY-MM-DD HH:MM:SS UTC' -> Date -> Paris YYYY-MM-DD
+      const raw = utcStr.replace(' UTC', '').replace(' ', 'T') + 'Z';
+      const d = new Date(raw);
+      const paris = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' });
+      return paris.format(d); // YYYY-MM-DD
+    }
+
+    function getParisTodayDate() {
+      const nowParis = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
+      const yyyy = nowParis.getFullYear();
+      const mm = String(nowParis.getMonth() + 1).padStart(2, '0');
+      const dd = String(nowParis.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    function isWeekday(dateObj) {
+      const day = dateObj.getDay(); // 0 Sun .. 6 Sat
+      return day >= 1 && day <= 5;
+    }
+
+    function getLastNWeekdays(n) {
+      // Returns array of YYYY-MM-DD (Paris), newest last (chronological)
+      const out = [];
+      let cursor = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
+      // normalize time
+      cursor.setHours(12, 0, 0, 0);
+      while (out.length < n) {
+        if (isWeekday(cursor)) {
+          const y = cursor.getFullYear();
+          const m = String(cursor.getMonth() + 1).padStart(2, '0');
+          const d = String(cursor.getDate()).padStart(2, '0');
+          out.push(`${y}-${m}-${d}`);
+        }
+        cursor.setDate(cursor.getDate() - 1);
+      }
+      return out.reverse(); // oldest -> newest for chart X axis
+    }
+
+    function totalsForDates(dateKeys) {
+      // Build map {dateKey: minutes}
+      const totals = {};
+      dateKeys.forEach(k => totals[k] = 0);
+      const log = JSON.parse(localStorage.getItem('time_log') || '[]');
+
+      for (const row of log) {
+        if (!row.start || !row.duration) continue;
+        const key = parisDateKeyFromUTCString(row.start);
+        if (key in totals) {
+          totals[key] += parseDurationToMinutes(row.duration);
+        }
+      }
+      return totals;
+    }
+
+    function renderBarChartForLastFiveWeekdays() {
+      const dates = getLastNWeekdays(5); // ['YYYY-MM-DD', ...]
+      const totals = totalsForDates(dates); // minutes per day
+      const labels = dates.map(d => d.slice(5)); // 'MM-DD' for axis
+      const values = dates.map(d => Math.round((totals[d] || 0) * 10) / 10); // minutes, 0.1 precision
+
+      drawBars(labels, values);
+    }
+
+    function drawBars(labels, values) {
+      const canvas = document.getElementById('barChart');
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width, H = canvas.height;
+
+      // Clear
+      ctx.clearRect(0, 0, W, H);
+
+      // Margins
+      const margin = { left: 50, right: 20, top: 20, bottom: 50 };
+      const chartW = W - margin.left - margin.right;
+      const chartH = H - margin.top - margin.bottom;
+
+      // Axis
+      ctx.strokeStyle = '#444';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(margin.left, margin.top);
+      ctx.lineTo(margin.left, margin.top + chartH);
+      ctx.lineTo(margin.left + chartW, margin.top + chartH);
+      ctx.stroke();
+
+      // Scale
+      const maxVal = Math.max(0, ...values);
+      const niceMax = maxVal === 0 ? 60 : Math.ceil(maxVal / 30) * 30; // round to nearest 30 min
+      const toY = (v) => margin.top + chartH - (v / niceMax) * chartH;
+
+      // Y ticks (every 30 min)
+      ctx.fillStyle = '#666';
+      ctx.font = '12px sans-serif';
+      const step = 30; // minutes
+      for (let y = 0; y <= niceMax; y += step) {
+        const yy = toY(y);
+        ctx.strokeStyle = '#eee';
+        ctx.beginPath();
+        ctx.moveTo(margin.left, yy);
+        ctx.lineTo(margin.left + chartW, yy);
+        ctx.stroke();
+
+        ctx.fillStyle = '#666';
+        const hrs = Math.floor(y / 60);
+        const mins = y % 60;
+        const label = hrs > 0 ? `${hrs}h${String(mins).padStart(2,'0')}` : `${mins}m`;
+        ctx.fillText(label, 6, yy + 4);
+      }
+
+      // Bars
+      const n = labels.length;
+      const gap = 16;
+      const barW = Math.min(60, (chartW - gap * (n + 1)) / n);
+      let x = margin.left + gap;
+
+      ctx.textAlign = 'center';
+      for (let i = 0; i < n; i++) {
+        const v = values[i];
+        const y = toY(v);
+        const h = (margin.top + chartH) - y;
+
+        ctx.fillStyle = '#89a';
+        ctx.fillRect(x, y, barW, h);
+
+        // value label (HH:MM)
+        ctx.fillStyle = '#222';
+        const totMin = Math.round(v);
+        const hh = Math.floor(totMin / 60);
+        const mm = totMin % 60;
+        const valLabel = hh > 0 ? `${hh}:${String(mm).padStart(2,'0')}` : `${mm}m`;
+        ctx.font = '12px sans-serif';
+        if (h > 18) {
+          // inside bar
+          ctx.fillStyle = '#fff';
+          ctx.fillText(valLabel, x + barW / 2, y + 14);
+        } else {
+          // above bar
+          ctx.fillStyle = '#333';
+          ctx.fillText(valLabel, x + barW / 2, y - 4);
+        }
+
+        // x labels
+        ctx.fillStyle = '#333';
+        ctx.fillText(labels[i], x + barW / 2, margin.top + chartH + 18);
+
+        x += barW + gap;
+      }
+
+      // Axis title
+      ctx.fillStyle = '#333';
+      ctx.font = '13px sans-serif';
+      ctx.fillText('Minutes tracked per day (Paris time)', margin.left + chartW / 2, margin.top - 6);
     }
 
     // ========= Init =========
@@ -564,7 +764,7 @@
 
       renderLog();
 
-      // Kick off idle reminder loop
+      // Idle reminder loop
       updateNextReminderEstimate();
       scheduleNextIdleCheck(60*1000);
       document.addEventListener('visibilitychange', () => {
@@ -572,7 +772,7 @@
         if (!document.hidden) scheduleNextIdleCheck(2*1000);
       });
 
-      // Close modal on ESC or backdrop click
+      // Modal close hooks
       document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
       document.getElementById('modalBackdrop').addEventListener('click', (e) => {
         if (e.target.id === 'modalBackdrop') closeModal();
