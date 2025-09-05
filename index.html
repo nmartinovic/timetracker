@@ -356,6 +356,12 @@
       catch(e){ return null; }
     }
 
+    // ===== Optimization state =====
+    let lastPersist = 0;
+    const PERSIST_EVERY_MS = 5000; // throttle localStorage write
+    let lastTitleText = '';
+    let lastCountdownText = '';
+
     /* ========= Helpers ========= */
     function markActivity() {
       lastTimerActivity = Date.now();
@@ -454,6 +460,8 @@
 
       // Persist active timer immediately
       writeActiveTimer();
+      lastPersist = 0; // force a write soon after start
+      lastTitleText = ''; lastCountdownText = '';
 
       if (timer) clearInterval(timer);
       timer = setInterval(() => {
@@ -461,12 +469,12 @@
         const remaining = endTime - Date.now();
         if (remaining <= 0 && !hasLoggedCurrent) {
           notify(currentTask);
-          // Log using scheduled endTime to keep duration precise
+          // Log using scheduled endTime for precision
           logSession(currentTask, endTime);
           hasLoggedCurrent = true;
           stopTimer(false); // cleanup only
         }
-      }, 500);
+      }, 1000); // optimized: 1s tick
     }
 
     function stopTimer(log = false) {
@@ -488,6 +496,9 @@
 
       document.getElementById('countdown').textContent = '00:00';
       document.title = 'Time Tracker';
+      lastTitleText = 'Time Tracker';
+      lastCountdownText = '00:00';
+
       markActivity();
       maybeRerenderChart();
     }
@@ -497,10 +508,23 @@
       const now = Date.now();
       const remaining = Math.max(0, endTime - now);
       const timeString = formatTime(remaining);
-      document.getElementById('countdown').textContent = timeString;
-      document.title = `${timeString} - Time Tracker`;
-      // keep persisted copy fresh
-      writeActiveTimer();
+
+      // Avoid touching the DOM if nothing changed
+      if (timeString !== lastCountdownText) {
+        document.getElementById('countdown').textContent = timeString;
+        lastCountdownText = timeString;
+      }
+      const title = `${timeString} - Time Tracker`;
+      if (title !== lastTitleText) {
+        document.title = title;
+        lastTitleText = title;
+      }
+
+      // Throttle localStorage write
+      if (now - lastPersist >= PERSIST_EVERY_MS) {
+        writeActiveTimer();
+        lastPersist = now;
+      }
     }
 
     function notify(task) {
@@ -521,6 +545,8 @@
         if (!hasLoggedCurrent && startTime && endTime && Date.now() >= endTime) {
           logSession(currentTask, endTime);
           hasLoggedCurrent = true;
+          // Make a best-effort persist so we don't double-log on restore
+          writeActiveTimer();
         }
       } catch (e) {}
     });
@@ -535,9 +561,15 @@
       endTime = saved.endMs;
       hasLoggedCurrent = !!saved.hasLogged;
 
+      // NEW: reflect task in the Task field when restoring
+      const taskInput = document.getElementById('task');
+      if (taskInput && typeof saved.task === 'string') taskInput.value = saved.task;
+
       if (!startTime || !endTime || !currentTask) {
         clearActiveTimer(); return;
       }
+
+      lastTitleText = ''; lastCountdownText = ''; // force repaint
 
       const now = Date.now();
       if (now < endTime) {
@@ -553,7 +585,7 @@
             hasLoggedCurrent = true;
             stopTimer(false);
           }
-        }, 500);
+        }, 1000);
       } else {
         // Timer ended while away — log once (no sound)
         if (!hasLoggedCurrent) {
