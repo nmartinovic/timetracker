@@ -37,10 +37,7 @@
       }
     }
 
-    /* Prevent overflow & help centering */
     *, *::before, *::after { box-sizing: border-box; }
-
-    /* ===== Layout & basics ===== */
     html,body{height:100%}
     body{
       margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Helvetica, Arial, sans-serif;
@@ -49,14 +46,8 @@
         radial-gradient(1200px 1200px at 110% 10%, rgba(16,185,129,.06), transparent 40%),
         var(--bg);
     }
-    .container{
-      max-width: 1100px;
-      margin: 28px auto;
-      padding: 0 16px;
-    }
-    .header{
-      display:flex; align-items: center; gap:14px; margin-bottom: 18px;
-    }
+    .container{ max-width: 1100px; margin: 28px auto; padding: 0 16px; }
+    .header{ display:flex; align-items: center; gap:14px; margin-bottom: 18px; }
     .logo{
       width:40px; height:40px; border-radius: 10px;
       background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
@@ -66,16 +57,11 @@
     .title h1{margin:0; font-size: clamp(20px, 3vw, 28px);}
     .title p{margin:2px 0 0; color:var(--muted); font-size: 14px}
 
-    .grid{
-      display:grid; gap:16px;
-      grid-template-columns: 1fr;
-    }
+    .grid{ display:grid; gap:16px; grid-template-columns: 1fr; }
     @media (min-width: 980px){
       .grid{
         grid-template-columns: minmax(340px, 420px) minmax(520px, 640px);
-        justify-content: center;
-        max-width: 1080px;
-        margin-inline: auto;
+        justify-content: center; max-width: 1080px; margin-inline: auto;
       }
     }
 
@@ -83,9 +69,7 @@
       background: var(--card); border:1px solid var(--border);
       border-radius: var(--radius); box-shadow: var(--shadow); padding:18px;
     }
-    .section-title{
-      display:flex; align-items:center; justify-content: space-between; gap:10px; margin-bottom:12px;
-    }
+    .section-title{ display:flex; align-items:center; justify-content: space-between; gap:10px; margin-bottom:12px; }
     .section-title h2{margin:0; font-size:18px}
     .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
     label{font-size:14px; color:var(--muted)}
@@ -132,20 +116,15 @@
     }
     .hint{ color:var(--muted); font-size:12px; margin-top:4px }
 
-    /* Table */
     table{ width:100%; border-collapse: collapse; }
     thead th{
       text-align:left; font-size:12px; color:var(--muted); font-weight:600;
       border-bottom:1px solid var(--border); padding:10px 8px;
       position: sticky; top:0; background: var(--card);
     }
-    tbody td{
-      border-bottom:1px solid var(--border);
-      padding: 10px 8px; vertical-align: top;
-    }
+    tbody td{ border-bottom:1px solid var(--border); padding: 10px 8px; vertical-align: top; }
     tbody tr:hover{ background: color-mix(in oklab, var(--primary-50), transparent 85%); }
 
-    /* Chart */
     #chartWrap{ display:none; margin-top:12px; }
     #barChart{
       width:100%; height:auto; border:1px solid var(--border);
@@ -154,13 +133,11 @@
     }
     .chart-note{ font-size:12px; color:var(--muted); margin-top:6px }
 
-    /* Modal */
     .modal-backdrop{ position:fixed; inset:0; display:none; place-items:center; background: rgba(0,0,0,.45); z-index: 50;}
     .modal{
       width:min(520px, 92vw); background: var(--card); color:var(--text);
       border:1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow);
-      padding:18px;
-      animation: pop .14s ease-out;
+      padding:18px; animation: pop .14s ease-out;
     }
     @keyframes pop{ from{transform: scale(.98); opacity:.8} to{transform: scale(1); opacity:1} }
     .modal h3{ margin:0 0 10px }
@@ -168,8 +145,6 @@
     .modal .actions{ display:flex; gap:10px; justify-content: end; margin-top:12px }
 
     code{ background: color-mix(in oklab, var(--primary-50), transparent 70%); padding:2px 6px; border-radius:6px; }
-
-    /* Small utilities */
     .spacer{ height:8px }
     .nowrap{ white-space: nowrap }
     .actions-col{ white-space: nowrap }
@@ -199,6 +174,7 @@
         </div>
         <div class="row" style="gap:8px; margin-top:6px">
           <button class="btn btn-primary" onclick="startTimer()">Start</button>
+          <button class="btn" onclick="startCountUp()">Count Up</button>
           <button class="btn" onclick="stopTimer(true)">Stop</button>
           <span class="countdown" id="countdown">00:00</span>
         </div>
@@ -313,11 +289,16 @@
   <script>
     /* ========= State ========= */
     let timer = null;
+    let timerMode = null; // 'down' | 'up' | null
     let endTime = null;
     let startTime = null;
     let currentTask = null;
     let currentDuration = null;
     let dingTimeout = null;
+
+    // Count-up reminder state
+    const UP_REM_MS = 20 * 60 * 1000;
+    let nextUpReminderAt = null;
 
     // Mutes
     let muteSound = JSON.parse(localStorage.getItem('muteSound') || 'false');
@@ -344,8 +325,15 @@
 
     // ===== Active timer persistence =====
     function writeActiveTimer() {
-      if (!startTime || !endTime || !currentTask) return;
-      const payload = { task: currentTask, startMs: startTime, endMs: endTime, hasLogged: !!hasLoggedCurrent };
+      if (!startTime || !currentTask) return;
+      const payload = {
+        task: currentTask,
+        startMs: startTime,
+        endMs: endTime ?? null,
+        hasLogged: !!hasLoggedCurrent,
+        mode: timerMode || null,
+        nextUpReminderAt: nextUpReminderAt ?? null
+      };
       localStorage.setItem('active_timer', JSON.stringify(payload));
     }
     function clearActiveTimer() {
@@ -405,7 +393,6 @@
       return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
-    // Format a Date in a given IANA TZ as 'YYYY-MM-DD HH:MM:SS'
     function formatInTZ(date, tz) {
       const dtf = new Intl.DateTimeFormat('en-CA', {
         timeZone: tz, year:'numeric', month:'2-digit', day:'2-digit',
@@ -426,7 +413,7 @@
       catch(e){ return false; }
     }
 
-    // Work windows: 09:30–13:00 and 14:00–18:00 (Europe/Paris)
+    // Work windows: 09:30–13:00 and 14:00–18:00 (Europe/Paris) — used only for idle reminders
     function inParisWorkWindows() {
       const nowParis = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
       const hh = nowParis.getHours();
@@ -445,36 +432,54 @@
       const minutes = parseInt(document.getElementById('duration').value, 10);
       if (!task || isNaN(minutes) || minutes < 1) return alert('Please enter a valid task and duration.');
 
+      timerMode = 'down';
       startTime = Date.now();
       endTime = startTime + minutes * 60000;
       currentTask = task;
       currentDuration = minutes;
       hasLoggedCurrent = false;
+      nextUpReminderAt = null; // not used in countdown
 
-      updateCountdown();
+      updateTimerUI();
       markActivity();
 
       if (!muteNotifications && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
         Notification.requestPermission();
       }
 
-      // Persist active timer immediately
       writeActiveTimer();
-      lastPersist = 0; // force a write soon after start
+      lastPersist = 0;
       lastTitleText = ''; lastCountdownText = '';
 
       if (timer) clearInterval(timer);
-      timer = setInterval(() => {
-        updateCountdown();
-        const remaining = endTime - Date.now();
-        if (remaining <= 0 && !hasLoggedCurrent) {
-          notify(currentTask);
-          // Log using scheduled endTime for precision
-          logSession(currentTask, endTime);
-          hasLoggedCurrent = true;
-          stopTimer(false); // cleanup only
-        }
-      }, 1000); // optimized: 1s tick
+      timer = setInterval(tick, 1000);
+    }
+
+    function startCountUp() {
+      const task = document.getElementById('task').value.trim();
+      if (!task) return alert('Please enter a task name.');
+
+      timerMode = 'up';
+      startTime = Date.now();
+      endTime = null;
+      currentTask = task;
+      currentDuration = null;
+      hasLoggedCurrent = false;
+      nextUpReminderAt = startTime + UP_REM_MS; // first nudge in 20m
+
+      updateTimerUI();
+      markActivity();
+
+      if (!muteNotifications && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+        Notification.requestPermission();
+      }
+
+      writeActiveTimer();
+      lastPersist = 0;
+      lastTitleText = ''; lastCountdownText = '';
+
+      if (timer) clearInterval(timer);
+      timer = setInterval(tick, 1000);
     }
 
     function stopTimer(log = false) {
@@ -482,15 +487,16 @@
       timer = null;
 
       if (log && !hasLoggedCurrent && currentTask && startTime) {
-        // Log up to now
         logSession(currentTask, Date.now());
         hasLoggedCurrent = true;
       }
 
+      timerMode = null;
       endTime = null;
       startTime = null;
       currentTask = null;
       currentDuration = null;
+      nextUpReminderAt = null;
 
       clearActiveTimer();
 
@@ -503,24 +509,61 @@
       maybeRerenderChart();
     }
 
-    function updateCountdown() {
-      if (!endTime) return;
+    function tick() {
+      if (!startTime || !timerMode) return;
       const now = Date.now();
-      const remaining = Math.max(0, endTime - now);
-      const timeString = formatTime(remaining);
 
-      // Avoid touching the DOM if nothing changed
+      if (timerMode === 'down') {
+        const remaining = (endTime || 0) - now;
+        updateTimerUI();
+        if (remaining <= 0 && !hasLoggedCurrent) {
+          notify(currentTask);
+          logSession(currentTask, endTime);
+          hasLoggedCurrent = true;
+          stopTimer(false);
+        }
+      } else if (timerMode === 'up') {
+        updateTimerUI();
+        // 20-minute recurring reminder while counting up
+        if (!muteReminders && !muteNotifications && typeof Notification !== 'undefined') {
+          if (Notification.permission === 'granted' && nextUpReminderAt && now >= nextUpReminderAt) {
+            new Notification('Timer still running', { body: `Task: ${currentTask} — ${formatTime(now - startTime)} elapsed` });
+            // optional sound ping
+            if (!muteSound) {
+              const ding = document.getElementById('ding');
+              try { ding.currentTime = 0; ding.play(); setTimeout(() => { try { ding.pause(); } catch(e){} }, 1000); } catch(e){}
+            }
+            nextUpReminderAt += UP_REM_MS;
+            writeActiveTimer(); // persist updated reminder schedule
+          }
+        }
+      }
+    }
+
+    function updateTimerUI() {
+      if (!startTime || !timerMode) return;
+      const now = Date.now();
+      let timeString = '00:00';
+      if (timerMode === 'down') {
+        const remaining = Math.max(0, (endTime || 0) - now);
+        timeString = formatTime(remaining);
+      } else {
+        const elapsed = Math.max(0, now - startTime);
+        timeString = formatTime(elapsed);
+      }
+
+      // Avoid unnecessary DOM churn
       if (timeString !== lastCountdownText) {
         document.getElementById('countdown').textContent = timeString;
         lastCountdownText = timeString;
       }
-      const title = `${timeString} - Time Tracker`;
+      const title = (timerMode === 'up' ? `↑${timeString}` : `${timeString}`) + ' - Time Tracker';
       if (title !== lastTitleText) {
         document.title = title;
         lastTitleText = title;
       }
 
-      // Throttle localStorage write
+      // Throttle persistence
       if (now - lastPersist >= PERSIST_EVERY_MS) {
         writeActiveTimer();
         lastPersist = now;
@@ -539,60 +582,58 @@
       }
     }
 
-    // Log on page unload if finished and not yet logged
+    // Log on page unload if finished and not yet logged (only applies to countdown)
     window.addEventListener('beforeunload', () => {
       try {
-        if (!hasLoggedCurrent && startTime && endTime && Date.now() >= endTime) {
+        if (timerMode === 'down' && !hasLoggedCurrent && startTime && endTime && Date.now() >= endTime) {
           logSession(currentTask, endTime);
           hasLoggedCurrent = true;
-          // Make a best-effort persist so we don't double-log on restore
           writeActiveTimer();
         }
       } catch (e) {}
     });
 
-    // Restore active timer on load (resume or auto-log)
+    // Restore active timer on load (resume countdown or count-up)
     function restoreActiveTimer() {
       const saved = loadActiveTimer();
       if (!saved) return;
 
       currentTask = saved.task;
       startTime = saved.startMs;
-      endTime = saved.endMs;
+      endTime = saved.endMs ?? null;
       hasLoggedCurrent = !!saved.hasLogged;
+      timerMode = saved.mode || (endTime ? 'down' : 'up'); // backward-compat
+      nextUpReminderAt = saved.nextUpReminderAt ?? null;
 
-      // NEW: reflect task in the Task field when restoring
+      // Reflect task in input
       const taskInput = document.getElementById('task');
       if (taskInput && typeof saved.task === 'string') taskInput.value = saved.task;
 
-      if (!startTime || !endTime || !currentTask) {
+      if (!startTime || !currentTask) {
         clearActiveTimer(); return;
       }
 
       lastTitleText = ''; lastCountdownText = ''; // force repaint
-
       const now = Date.now();
-      if (now < endTime) {
-        // Resume countdown
-        updateCountdown();
-        if (timer) clearInterval(timer);
-        timer = setInterval(() => {
-          updateCountdown();
-          const remaining = endTime - Date.now();
-          if (remaining <= 0 && !hasLoggedCurrent) {
-            notify(currentTask);
-            logSession(currentTask, endTime);
-            hasLoggedCurrent = true;
-            stopTimer(false);
-          }
-        }, 1000);
-      } else {
-        // Timer ended while away — log once (no sound)
-        if (!hasLoggedCurrent) {
-          logSession(currentTask, endTime);
-          hasLoggedCurrent = true;
+
+      if (timerMode === 'up') {
+        // If reminder schedule is stale or missing, set next to the next 20m boundary
+        if (!nextUpReminderAt || nextUpReminderAt <= now) {
+          const elapsedSinceStart = now - startTime;
+          const intervalsPassed = Math.ceil(elapsedSinceStart / UP_REM_MS);
+          nextUpReminderAt = startTime + intervalsPassed * UP_REM_MS;
         }
-        stopTimer(false); // cleanup state & clear active
+      }
+
+      updateTimerUI();
+      if (timer) clearInterval(timer);
+      timer = setInterval(tick, 1000);
+
+      // Auto-log ended countdown if reopened after it finished
+      if (timerMode === 'down' && endTime && now >= endTime && !hasLoggedCurrent) {
+        logSession(currentTask, endTime);
+        hasLoggedCurrent = true;
+        stopTimer(false);
       }
     }
 
@@ -623,7 +664,6 @@
       const log = JSON.parse(localStorage.getItem('time_log') || '[]');
       ensureIdsOnLog(log);
 
-      // Update headers to reflect display TZ
       document.getElementById('startHeader').textContent = `Start (${displayTZ})`;
       document.getElementById('endHeader').textContent = `End (${displayTZ})`;
 
@@ -655,7 +695,6 @@
 
     /* ========= Export / Clear ========= */
     function exportCSV() {
-      // Export stays in UTC using stored strings
       const log = JSON.parse(localStorage.getItem('time_log') || '[]');
       if (log.length === 0) return alert('No data to export.');
       const header = ['Task', 'Duration', 'Start (UTC)', 'End (UTC)'];
@@ -705,13 +744,8 @@
       setBadge(document.getElementById('muteRemindersBadge'), !muteReminders, 'Reminders: On', 'Reminders: Off');
     }
 
-    /* ========= Idle Reminder ========= */
+    /* ========= Idle Reminder (only when NO timer running) ========= */
     let nextReminderEstimateEl = null;
-    function ensureNotifPermissionForReminders() {
-      if (!muteNotifications && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
-        Notification.requestPermission();
-      }
-    }
     function msSinceLastActivity() { return Date.now() - lastTimerActivity; }
     function updateNextReminderEstimate() {
       if (!nextReminderEstimateEl) nextReminderEstimateEl = document.getElementById('nextReminderETA');
@@ -823,11 +857,8 @@
       let cursor = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
       cursor.setHours(12,0,0,0);
       while (out.length < n) {
-        const day = cursor.getDay(); // 0 Sun .. 6 Sat in that local clone
-        if (day >= 1 && day <= 5) {
-          out.push(ymdInTZ(cursor, tz)); // YYYY-MM-DD for tz
-        }
-        // step back one local day
+        const day = cursor.getDay(); // 0 Sun .. 6 Sat
+        if (day >= 1 && day <= 5) out.push(ymdInTZ(cursor, tz));
         cursor.setDate(cursor.getDate() - 1);
       }
       return out.reverse();
@@ -916,7 +947,6 @@
         x += barW + gap;
       }
 
-      // Note
       const note = document.getElementById('chartNote');
       note.innerHTML = `Minutes per day for the last five weekdays (grouped by <strong>${displayTZ}</strong> day, using each session’s <em>start time</em>).`;
     }
@@ -953,7 +983,6 @@
 
     /* ========= Init ========= */
     (function initUI(){
-      // Button labels + badges
       document.getElementById('muteSoundBtn').textContent = muteSound ? 'Unmute Sound' : 'Mute Sound';
       setBadge(document.getElementById('muteSoundBadge'), !muteSound, 'Sound: On', 'Sound: Off');
 
@@ -963,23 +992,19 @@
       document.getElementById('muteRemindersBtn').textContent = muteReminders ? 'Unmute Reminders' : 'Mute Reminders';
       setBadge(document.getElementById('muteRemindersBadge'), !muteReminders, 'Reminders: On', 'Reminders: Off');
 
-      // Timezone UI
       updateTZUI();
 
       if (!localStorage.getItem('lastTimerActivity')) { markActivity(); }
       else { lastTimerActivity = parseInt(localStorage.getItem('lastTimerActivity'), 10) || Date.now(); }
 
-      // Ask early so idle reminders work from a cold start
       if (!muteNotifications && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
         Notification.requestPermission();
       }
 
       renderLog();
 
-      // Restore any active timer (resume or auto-log)
       restoreActiveTimer();
 
-      // Idle reminder loop
       updateNextReminderEstimate();
       scheduleNextIdleCheck(60*1000);
       document.addEventListener('visibilitychange', () => {
@@ -987,7 +1012,6 @@
         if (!document.hidden) scheduleNextIdleCheck(2*1000);
       });
 
-      // Close modal on ESC or backdrop click
       document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
       document.getElementById('modalBackdrop').addEventListener('click', e => {
         if (e.target.id === 'modalBackdrop') closeModal();
