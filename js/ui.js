@@ -54,7 +54,6 @@ function renderLog() {
     tbody.appendChild(tr);
   });
 
-  // wire edit buttons (event delegation alternative also works)
   tbody.querySelectorAll('button[data-edit]').forEach(btn => {
     btn.addEventListener('click', () => openEditModal(btn.getAttribute('data-edit')));
   });
@@ -313,6 +312,19 @@ function openAddModal() {
   $('#modalEnd').value   = '';
   openModal();
 }
+
+// NEW: when count-up stopped without a task, prefill modal with captured times
+window.addEventListener('countup-need-task', (e) => {
+  const { startUTC, endUTC } = e.detail || {};
+  modalMode = 'add'; modalEditingId = null;
+  $('#modalTitle').textContent = 'Finalize Count Up';
+  $('#modalDeleteBtn').style.display = 'none';
+  $('#modalTask').value = ''; // ask user to name it now
+  $('#modalStart').value = (startUTC || '').replace(' UTC','');
+  $('#modalEnd').value   = (endUTC || '').replace(' UTC','');
+  openModal();
+});
+
 function saveModal() {
   const task = $('#modalTask').value.trim();
   const startStr = $('#modalStart').value.trim();
@@ -386,15 +398,13 @@ export function initApp(){
     if (!isNaN(v)) localStorage.setItem('lastTimerActivity', String(v));
   }
 
-  // Early ask so reminders can work
-  const m = getMutes();
-  if (!m.notifications && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+  if (!getMutes().notifications && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
     Notification.requestPermission();
   }
 
   renderLog();
 
-  // Restore active timer (also restores task input)
+  // Restore active timer (also restores task input, even if empty)
   restoreActiveTimer();
 
   // Idle reminder loop

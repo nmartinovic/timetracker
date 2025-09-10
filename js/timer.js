@@ -1,5 +1,7 @@
 // timer.js
-import { PERSIST_EVERY_MS, UP_REM_MS, formatTime, formatExcelDateString, durationStringFromDates } from './utils.js';
+import {
+  PERSIST_EVERY_MS, UP_REM_MS, formatTime, formatExcelDateString, durationStringFromDates
+} from './utils.js';
 
 const q = sel => document.querySelector(sel);
 
@@ -9,7 +11,7 @@ const state = {
   mode: null,           // 'down' | 'up' | null
   startTime: null,      // ms
   endTime: null,        // ms for countdown
-  task: null,
+  task: null,           // can be '' during count-up
   durationMin: null,
   hasLoggedCurrent: false,
   dingTimeout: null,
@@ -26,9 +28,10 @@ const state = {
 
 // ===== Persistence for active timer =====
 function writeActiveTimer() {
-  if (!state.startTime || !state.task) return;
+  // Persist even if task is empty (so count-up with no task restores)
+  if (!state.startTime) return;
   const payload = {
-    task: state.task,
+    task: typeof state.task === 'string' ? state.task : '',
     startMs: state.startTime,
     endMs: state.endTime ?? null,
     hasLogged: !!state.hasLoggedCurrent,
@@ -57,7 +60,6 @@ export function getMutes() {
 }
 export function setMuteSound(v) {
   state.muteSound = !!v; localStorage.setItem('muteSound', JSON.stringify(state.muteSound));
-  // stop sound immediately
   const ding = q('#ding');
   if (state.muteSound && ding && !ding.paused) { try { ding.pause(); } catch(e){} }
 }
@@ -84,9 +86,9 @@ export function startTimer() {
   state.durationMin = minutes;
   state.hasLoggedCurrent = false;
   state.nextUpReminderAt = null;
+
   updateTimerUI();
   markActivity();
-
   maybeAskNotificationPermission();
 
   writeActiveTimer();
@@ -98,20 +100,18 @@ export function startTimer() {
 }
 
 export function startCountUp() {
-  const task = q('#task').value.trim();
-  if (!task) { alert('Please enter a task name.'); return; }
-
+  // ✅ No task required up front
+  const task = q('#task').value.trim(); // may be ''
   state.mode = 'up';
   state.startTime = Date.now();
   state.endTime = null;
-  state.task = task;
+  state.task = task; // can be empty
   state.durationMin = null;
   state.hasLoggedCurrent = false;
   state.nextUpReminderAt = state.startTime + UP_REM_MS;
 
   updateTimerUI();
   markActivity();
-
   maybeAskNotificationPermission();
 
   writeActiveTimer();
@@ -126,11 +126,26 @@ export function stopTimer(log = true) {
   if (state.timer) clearInterval(state.timer);
   state.timer = null;
 
-  if (log && !state.hasLoggedCurrent && state.task && state.startTime) {
-    logSession(state.task, Date.now());
-    state.hasLoggedCurrent = true;
+  const modeAtStop = state.mode;
+  const startAtStop = state.startTime;
+  const taskAtStop = (typeof state.task === 'string') ? state.task.trim() : '';
+  const endNow = Date.now();
+
+  if (log && !state.hasLoggedCurrent && startAtStop) {
+    if (modeAtStop === 'up' && !taskAtStop) {
+      // 👉 Need task name now: open the existing Add/Edit modal prefilled with times
+      const startUTC = formatExcelDateString(new Date(startAtStop)) + ' UTC';
+      const endUTC   = formatExcelDateString(new Date(endNow)) + ' UTC';
+      window.dispatchEvent(new CustomEvent('countup-need-task', { detail: { startUTC, endUTC } }));
+      // Do NOT log yet; user will confirm via modal.
+    } else if (taskAtStop) {
+      // Normal logging path
+      logSession(taskAtStop, endNow);
+      state.hasLoggedCurrent = true;
+    }
   }
 
+  // Clear state regardless
   state.mode = null;
   state.endTime = null;
   state.startTime = null;
@@ -146,7 +161,7 @@ export function stopTimer(log = true) {
   state.lastCountdownText = '00:00';
 
   markActivity();
-  // charts re-render from ui.js on time-log-updated
+  // charts/table will re-render on modal save or time-log-updated
 }
 
 // ===== Ticking / UI update =====
@@ -168,7 +183,8 @@ function tick() {
     // recurring 20m reminder
     if (!state.muteReminders && !state.muteNotifications && typeof Notification !== 'undefined') {
       if (Notification.permission === 'granted' && state.nextUpReminderAt && now >= state.nextUpReminderAt) {
-        new Notification('Timer still running', { body: `Task: ${state.task} — ${formatTime(now - state.startTime)} elapsed` });
+        const tLabel = state.task && state.task.trim() ? state.task : 'Unnamed';
+        new Notification('Timer still running', { body: `Task: ${tLabel} — ${formatTime(now - state.startTime)} elapsed` });
         if (!state.muteSound) {
           const ding = q('#ding');
           try { ding.currentTime = 0; ding.play(); setTimeout(() => { try { ding.pause(); } catch(e){} }, 1000); } catch(e){}
@@ -202,7 +218,6 @@ function updateTimerUI() {
     state.lastTitleText = title;
   }
 
-  // Throttle localStorage write
   if (now - state.lastPersist >= PERSIST_EVERY_MS) {
     writeActiveTimer();
     state.lastPersist = now;
@@ -232,18 +247,18 @@ export function restoreActiveTimer() {
   const saved = loadActiveTimer();
   if (!saved) return;
 
-  state.task = saved.task;
+  state.task = typeof saved.task === 'string' ? saved.task : '';
   state.startTime = saved.startMs;
   state.endTime = saved.endMs ?? null;
   state.hasLoggedCurrent = !!saved.hasLogged;
   state.mode = saved.mode || (state.endTime ? 'down' : 'up');
   state.nextUpReminderAt = saved.nextUpReminderAt ?? null;
 
-  // reflect task in input
+  // reflect task (may be empty) in input
   const taskInput = q('#task');
   if (taskInput && typeof state.task === 'string') taskInput.value = state.task;
 
-  if (!state.startTime || !state.task) { clearActiveTimer(); return; }
+  if (!state.startTime) { clearActiveTimer(); return; }
 
   state.lastTitleText = ''; state.lastCountdownText = ''; // force repaint
   const now = Date.now();
@@ -286,6 +301,5 @@ function logSession(task, endOverrideMs) {
   log.push(session);
   localStorage.setItem('time_log', JSON.stringify(log));
 
-  // Notify UI to re-render table & chart
   window.dispatchEvent(new CustomEvent('time-log-updated'));
 }
