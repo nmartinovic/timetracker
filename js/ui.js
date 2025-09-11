@@ -313,17 +313,36 @@ function openAddModal() {
   openModal();
 }
 
-// NEW: when count-up stopped without a task, prefill modal with captured times
-window.addEventListener('countup-need-task', (e) => {
-  const { startUTC, endUTC } = e.detail || {};
+// Robust finalize: open from event AND from localStorage fallback
+function openFinalizeCountUp(startUTC, endUTC) {
   modalMode = 'add'; modalEditingId = null;
   $('#modalTitle').textContent = 'Finalize Count Up';
   $('#modalDeleteBtn').style.display = 'none';
-  $('#modalTask').value = ''; // ask user to name it now
-  $('#modalStart').value = (startUTC || '').replace(' UTC','');
-  $('#modalEnd').value   = (endUTC || '').replace(' UTC','');
+  $('#modalTask').value = '';
+  $('#modalStart').value = String(startUTC || '').replace(' UTC','');
+  $('#modalEnd').value   = String(endUTC   || '').replace(' UTC','');
   openModal();
+}
+
+window.addEventListener('countup-need-task', (e) => {
+  const { startUTC, endUTC } = e.detail || {};
+  // Prefer event payload; also clear fallback if present to avoid double prompts
+  try { localStorage.removeItem('pending_countup'); } catch(e){}
+  openFinalizeCountUp(startUTC, endUTC);
 });
+
+function tryOpenFinalizeFromStorage() {
+  try {
+    const raw = localStorage.getItem('pending_countup');
+    if (!raw) return;
+    const { startUTC, endUTC } = JSON.parse(raw) || {};
+    if (startUTC && endUTC) {
+      openFinalizeCountUp(startUTC, endUTC);
+      // Clear so it doesn't pop repeatedly
+      localStorage.removeItem('pending_countup');
+    }
+  } catch(e){}
+}
 
 function saveModal() {
   const task = $('#modalTask').value.trim();
@@ -349,6 +368,8 @@ function saveModal() {
     log.push(payload);
   }
   localStorage.setItem('time_log', JSON.stringify(log));
+  // Ensure leftover fallback is cleared
+  try { localStorage.removeItem('pending_countup'); } catch(e){}
   closeModal(); renderLog(); maybeRerenderChart();
 }
 function deleteSessionFromModal() {
@@ -407,11 +428,18 @@ export function initApp(){
   // Restore active timer (also restores task input, even if empty)
   restoreActiveTimer();
 
+  // If a count-up stop happened but the event was missed, open from storage
+  tryOpenFinalizeFromStorage();
+
   // Idle reminder loop
   updateNextReminderEstimate();
   scheduleNextIdleCheck(60*1000);
   document.addEventListener('visibilitychange', () => {
     updateNextReminderEstimate();
-    if (!document.hidden) scheduleNextIdleCheck(2*1000);
+    if (!document.hidden) {
+      scheduleNextIdleCheck(2*1000);
+      // also try to open pending finalize if returning to tab
+      tryOpenFinalizeFromStorage();
+    }
   });
 }

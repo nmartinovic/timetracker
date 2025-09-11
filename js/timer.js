@@ -100,7 +100,7 @@ export function startTimer() {
 }
 
 export function startCountUp() {
-  // ✅ No task required up front
+  // No task required up front
   const task = q('#task').value.trim(); // may be ''
   state.mode = 'up';
   state.startTime = Date.now();
@@ -133,10 +133,17 @@ export function stopTimer(log = true) {
 
   if (log && !state.hasLoggedCurrent && startAtStop) {
     if (modeAtStop === 'up' && !taskAtStop) {
-      // 👉 Need task name now: open the existing Add/Edit modal prefilled with times
+      // Need task name now → store fallback + dispatch event
       const startUTC = formatExcelDateString(new Date(startAtStop)) + ' UTC';
       const endUTC   = formatExcelDateString(new Date(endNow)) + ' UTC';
-      window.dispatchEvent(new CustomEvent('countup-need-task', { detail: { startUTC, endUTC } }));
+
+      // Fallback so UI can pick it up even if event is missed
+      try { localStorage.setItem('pending_countup', JSON.stringify({ startUTC, endUTC })); } catch(e){}
+
+      // Event for normal path
+      try {
+        window.dispatchEvent(new CustomEvent('countup-need-task', { detail: { startUTC, endUTC } }));
+      } catch(e) {}
       // Do NOT log yet; user will confirm via modal.
     } else if (taskAtStop) {
       // Normal logging path
