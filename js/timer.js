@@ -11,7 +11,7 @@ const state = {
   mode: null,           // 'down' | 'up' | null
   startTime: null,      // ms
   endTime: null,        // ms for countdown
-  task: null,           // can be '' during count-up
+  task: null,           // may be '' during count-up (to force finalize modal on stop)
   durationMin: null,
   hasLoggedCurrent: false,
   dingTimeout: null,
@@ -28,7 +28,6 @@ const state = {
 
 // ===== Persistence for active timer =====
 function writeActiveTimer() {
-  // Persist even if task is empty (so count-up with no task restores)
   if (!state.startTime) return;
   const payload = {
     task: typeof state.task === 'string' ? state.task : '',
@@ -40,9 +39,7 @@ function writeActiveTimer() {
   };
   localStorage.setItem('active_timer', JSON.stringify(payload));
 }
-function clearActiveTimer() {
-  localStorage.removeItem('active_timer');
-}
+function clearActiveTimer() { localStorage.removeItem('active_timer'); }
 function loadActiveTimer() {
   try { return JSON.parse(localStorage.getItem('active_timer') || 'null'); }
   catch(e){ return null; }
@@ -99,15 +96,37 @@ export function startTimer() {
   state.timer = setInterval(tick, 1000);
 }
 
+/**
+ * Start Count Up.
+ * If a countdown is running, log it up to "now" first,
+ * then start a fresh count-up from "now" with an EMPTY task.
+ * (Empty task ensures the finalize modal appears on Stop.)
+ */
 export function startCountUp() {
-  // No task required up front
-  const task = q('#task').value.trim(); // may be ''
+  const now = Date.now();
+
+  // If we are mid-countdown, log that session up to now before switching
+  if (state.mode === 'down' && state.startTime && !state.hasLoggedCurrent) {
+    const prevTask = state.task; // countdown always has a task (validated on start)
+    if (prevTask) {
+      logSession(prevTask, now);      // end time is when Count Up was pressed
+      state.hasLoggedCurrent = true;  // guard against double-log
+    }
+  }
+
+  // Switch to count-up
+  if (state.timer) clearInterval(state.timer);
+
   state.mode = 'up';
-  state.startTime = Date.now();
+  state.startTime = now;     // new session begins at handoff moment
   state.endTime = null;
-  state.task = task; // can be empty
   state.durationMin = null;
   state.hasLoggedCurrent = false;
+
+  // 🔑 Force empty task so Stop triggers the finalize modal
+  q('#task').value = '';
+  state.task = '';
+
   state.nextUpReminderAt = state.startTime + UP_REM_MS;
 
   updateTimerUI();
@@ -118,7 +137,6 @@ export function startCountUp() {
   state.lastPersist = 0;
   state.lastTitleText = ''; state.lastCountdownText = '';
 
-  if (state.timer) clearInterval(state.timer);
   state.timer = setInterval(tick, 1000);
 }
 
@@ -133,18 +151,12 @@ export function stopTimer(log = true) {
 
   if (log && !state.hasLoggedCurrent && startAtStop) {
     if (modeAtStop === 'up' && !taskAtStop) {
-      // Need task name now → store fallback + dispatch event
+      // Finalize count-up: capture times & trigger modal (event + fallback)
       const startUTC = formatExcelDateString(new Date(startAtStop)) + ' UTC';
       const endUTC   = formatExcelDateString(new Date(endNow)) + ' UTC';
-
-      // Fallback so UI can pick it up even if event is missed
       try { localStorage.setItem('pending_countup', JSON.stringify({ startUTC, endUTC })); } catch(e){}
-
-      // Event for normal path
-      try {
-        window.dispatchEvent(new CustomEvent('countup-need-task', { detail: { startUTC, endUTC } }));
-      } catch(e) {}
-      // Do NOT log yet; user will confirm via modal.
+      try { window.dispatchEvent(new CustomEvent('countup-need-task', { detail: { startUTC, endUTC } })); } catch(e){}
+      // Don't log yet — user will name it in the modal.
     } else if (taskAtStop) {
       // Normal logging path
       logSession(taskAtStop, endNow);
@@ -152,7 +164,7 @@ export function stopTimer(log = true) {
     }
   }
 
-  // Clear state regardless
+  // Clear active session state
   state.mode = null;
   state.endTime = null;
   state.startTime = null;
@@ -168,7 +180,6 @@ export function stopTimer(log = true) {
   state.lastCountdownText = '00:00';
 
   markActivity();
-  // charts/table will re-render on modal save or time-log-updated
 }
 
 // ===== Ticking / UI update =====
@@ -187,7 +198,7 @@ function tick() {
     }
   } else if (state.mode === 'up') {
     updateTimerUI();
-    // recurring 20m reminder
+    // recurring 20m reminder while counting up
     if (!state.muteReminders && !state.muteNotifications && typeof Notification !== 'undefined') {
       if (Notification.permission === 'granted' && state.nextUpReminderAt && now >= state.nextUpReminderAt) {
         const tLabel = state.task && state.task.trim() ? state.task : 'Unnamed';
@@ -261,13 +272,12 @@ export function restoreActiveTimer() {
   state.mode = saved.mode || (state.endTime ? 'down' : 'up');
   state.nextUpReminderAt = saved.nextUpReminderAt ?? null;
 
-  // reflect task (may be empty) in input
   const taskInput = q('#task');
   if (taskInput && typeof state.task === 'string') taskInput.value = state.task;
 
   if (!state.startTime) { clearActiveTimer(); return; }
 
-  state.lastTitleText = ''; state.lastCountdownText = ''; // force repaint
+  state.lastTitleText = ''; state.lastCountdownText = '';
   const now = Date.now();
 
   if (state.mode === 'up') {
