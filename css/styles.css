@@ -108,6 +108,35 @@ input::placeholder{color:var(--muted)}
 }
 .hint{ color:var(--muted); font-size:12px; margin-top:4px }
 
+/* Keep the controls row on one line; push the timer to the far right */
+#controlsRow { 
+  flex-wrap: nowrap;          /* override the default .row wrap */
+  align-items: center;
+}
+#controlsRow .countdown {
+  margin-left: auto;          /* stick it to the right edge */
+}
+
+/* Prevent width jitter when digits change (09:59 → 10:00) */
+.countdown {
+  font-variant-numeric: tabular-nums;  /* equal-width digits */
+  min-width: 120px;                    /* keeps layout stable */
+  text-align: center;
+}
+
+
+
+@media (max-width: 420px){
+  #controlsRow { flex-wrap: wrap; }
+  #controlsRow .countdown {
+    margin-left: 0;
+    order: 4;            /* ensure it appears below the buttons */
+    width: 100%;
+  }
+}
+
+
+
 table{ width:100%; border-collapse: collapse; }
 thead th{
   text-align:left; font-size:12px; color:var(--muted); font-weight:600;
