@@ -123,6 +123,7 @@
   </div>
 
   <!-- Modal: Add/Edit -->
+  <!-- Modal: Add/Edit -->
   <div id="modalBackdrop" class="modal-backdrop">
     <div class="modal">
       <h3 id="modalTitle">Edit Session</h3>
@@ -131,14 +132,16 @@
         <input id="modalTask" type="text" placeholder="Task name" />
       </div>
       <div class="row">
-        <label for="modalStart">Start (UTC)</label>
-        <input id="modalStart" type="text" placeholder="YYYY-MM-DD HH:MM:SS" />
+        <label for="modalStart">Start (<span id="modalStartTz">TZ</span>)</label>
+        <input id="modalStart" type="datetime-local" />
       </div>
       <div class="row">
-        <label for="modalEnd">End (UTC)</label>
-        <input id="modalEnd" type="text" placeholder="YYYY-MM-DD HH:MM:SS" />
+        <label for="modalEnd">End (<span id="modalEndTz">TZ</span>)</label>
+        <input id="modalEnd" type="datetime-local" />
       </div>
-      <div class="hint">Times must be UTC, e.g., <code>2025-03-01 09:30:00</code>.</div>
+      <div class="hint" id="modalTzNote">
+        Times are interpreted in your display timezone (<code>—</code>) and saved as UTC.
+      </div>
       <div class="actions">
         <button class="btn btn-ghost" id="modalCancelBtn">Cancel</button>
         <button class="btn btn-ghost btn-warn" id="modalDeleteBtn" style="display:none">Delete</button>
@@ -146,6 +149,7 @@
       </div>
     </div>
   </div>
+
 
   <audio id="ding" src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg"
     preload="auto"></audio>

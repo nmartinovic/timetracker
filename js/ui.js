@@ -1,7 +1,8 @@
 // ui.js
 import {
   getSystemTZ, isValidTimeZone, parseUTCString, formatInTZ, ymdInTZ,
-  csvEscape, formatExcelDateString, durationStringFromDates, inParisWorkWindows
+  csvEscape, formatExcelDateString, durationStringFromDates, inParisWorkWindows,
+  utcDateToLocalDateTimeValue, localDateTimeStrToUTCDate
 } from './utils.js';
 
 import {
@@ -169,6 +170,12 @@ function updateTZUI() {
   $('#endHeader').textContent = `End (${displayTZ})`;
   const note = $('#chartNote');
   if (note) note.innerHTML = `Minutes per day for the last five weekdays (grouped by <strong>${displayTZ}</strong> day, using each session’s <em>start time</em>).`;
+
+  // Update modal labels / hint
+  const sTz = $('#modalStartTz'); if (sTz) sTz.textContent = displayTZ;
+  const eTz = $('#modalEndTz');   if (eTz) eTz.textContent = displayTZ;
+  const tzNote = $('#modalTzNote');
+  if (tzNote) tzNote.innerHTML = `Times are interpreted in your display timezone (<code>${displayTZ}</code>) and saved as UTC.`;
 }
 
 // ====== Chart (last five weekdays) ======
@@ -209,7 +216,6 @@ function drawBars(labels, values) {
   const chartW = W - margin.left - margin.right;
   const chartH = H - margin.top - margin.bottom;
 
-  // Axes
   ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--border');
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -218,12 +224,10 @@ function drawBars(labels, values) {
   ctx.lineTo(margin.left + chartW, margin.top + chartH);
   ctx.stroke();
 
-  // Scale
   const maxVal = Math.max(0, ...values);
   const niceMax = maxVal === 0 ? 60 : Math.ceil(maxVal / 30) * 30;
   const toY = (v) => margin.top + chartH - (v / niceMax) * chartH;
 
-  // Grid + Y labels
   const textColor = getComputedStyle(document.body).getPropertyValue('--muted');
   ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Inter, Helvetica, Arial, sans-serif';
   for (let y=0; y<=niceMax; y+=30) {
@@ -236,7 +240,6 @@ function drawBars(labels, values) {
     ctx.fillText(label, 8, yy+4);
   }
 
-  // Bars
   const n = labels.length; const gap = 18;
   const barW = Math.min(72, (chartW - gap*(n+1)) / n);
   let x = margin.left + gap;
@@ -298,9 +301,14 @@ function openEditModal(id) {
   modalMode = 'edit'; modalEditingId = id;
   $('#modalTitle').textContent = 'Edit Session';
   $('#modalDeleteBtn').style.display = '';
+
+  // Prefill using display TZ
   $('#modalTask').value = entry.task || '';
-  $('#modalStart').value = (entry.start || '').replace(' UTC','');
-  $('#modalEnd').value   = (entry.end || '').replace(' UTC','');
+  const startDt = parseUTCString((entry.start || '').replace(' UTC',''));
+  const endDt   = parseUTCString((entry.end   || '').replace(' UTC',''));
+  $('#modalStart').value = startDt ? utcDateToLocalDateTimeValue(startDt, displayTZ) : '';
+  $('#modalEnd').value   = endDt   ? utcDateToLocalDateTimeValue(endDt,   displayTZ) : '';
+
   openModal();
 }
 function openAddModal() {
@@ -309,24 +317,27 @@ function openAddModal() {
   $('#modalDeleteBtn').style.display = 'none';
   $('#modalTask').value = '';
   $('#modalStart').value = '';
-  $('#modalEnd').value   = '';
+  $('#modalEnd').value = '';
   openModal();
 }
 
-// Robust finalize: open from event AND from localStorage fallback
+// Finalize Count Up: prefill from UTC strings (provided by timer.js) into display TZ
 function openFinalizeCountUp(startUTC, endUTC) {
   modalMode = 'add'; modalEditingId = null;
   $('#modalTitle').textContent = 'Finalize Count Up';
   $('#modalDeleteBtn').style.display = 'none';
   $('#modalTask').value = '';
-  $('#modalStart').value = String(startUTC || '').replace(' UTC','');
-  $('#modalEnd').value   = String(endUTC   || '').replace(' UTC','');
+
+  const sDt = parseUTCString((startUTC || '').replace(' UTC',''));
+  const eDt = parseUTCString((endUTC   || '').replace(' UTC',''));
+  $('#modalStart').value = sDt ? utcDateToLocalDateTimeValue(sDt, displayTZ) : '';
+  $('#modalEnd').value   = eDt ? utcDateToLocalDateTimeValue(eDt, displayTZ) : '';
+
   openModal();
 }
 
 window.addEventListener('countup-need-task', (e) => {
   const { startUTC, endUTC } = e.detail || {};
-  // Prefer event payload; also clear fallback if present to avoid double prompts
   try { localStorage.removeItem('pending_countup'); } catch(e){}
   openFinalizeCountUp(startUTC, endUTC);
 });
@@ -338,7 +349,6 @@ function tryOpenFinalizeFromStorage() {
     const { startUTC, endUTC } = JSON.parse(raw) || {};
     if (startUTC && endUTC) {
       openFinalizeCountUp(startUTC, endUTC);
-      // Clear so it doesn't pop repeatedly
       localStorage.removeItem('pending_countup');
     }
   } catch(e){}
@@ -346,16 +356,21 @@ function tryOpenFinalizeFromStorage() {
 
 function saveModal() {
   const task = $('#modalTask').value.trim();
-  const startStr = $('#modalStart').value.trim();
-  const endStr = $('#modalEnd').value.trim();
+  const startLocalStr = $('#modalStart').value.trim();
+  const endLocalStr   = $('#modalEnd').value.trim();
   if (!task) { alert('Task is required.'); return; }
-  const startDt = parseUTCString(startStr);
-  const endDt = parseUTCString(endStr);
-  if (!startDt || !endDt) { alert('Please enter valid UTC times: YYYY-MM-DD HH:MM:SS'); return; }
-  if (endDt <= startDt) { alert('End must be after Start.'); return; }
+  const startDtUTC = localDateTimeStrToUTCDate(startLocalStr, displayTZ);
+  const endDtUTC   = localDateTimeStrToUTCDate(endLocalStr,   displayTZ);
+  if (!startDtUTC || !endDtUTC) { alert(`Please choose valid date/times in ${displayTZ}.`); return; }
+  if (endDtUTC <= startDtUTC) { alert('End must be after Start.'); return; }
 
-  const duration = durationStringFromDates(startDt, endDt);
-  const payload = { task, duration, start: formatExcelDateString(startDt) + ' UTC', end: formatExcelDateString(endDt) + ' UTC' };
+  const duration = durationStringFromDates(startDtUTC, endDtUTC);
+  const payload = {
+    task,
+    duration,
+    start: formatExcelDateString(startDtUTC) + ' UTC',
+    end:   formatExcelDateString(endDtUTC)   + ' UTC'
+  };
 
   const log = JSON.parse(localStorage.getItem('time_log') || '[]');
   ensureIdsOnLog(log);
@@ -368,7 +383,6 @@ function saveModal() {
     log.push(payload);
   }
   localStorage.setItem('time_log', JSON.stringify(log));
-  // Ensure leftover fallback is cleared
   try { localStorage.removeItem('pending_countup'); } catch(e){}
   closeModal(); renderLog(); maybeRerenderChart();
 }
@@ -425,10 +439,10 @@ export function initApp(){
 
   renderLog();
 
-  // Restore active timer (also restores task input, even if empty)
+  // Restore active timer
   restoreActiveTimer();
 
-  // If a count-up stop happened but the event was missed, open from storage
+  // If a count-up stop happened but event was missed, open from storage
   tryOpenFinalizeFromStorage();
 
   // Idle reminder loop
@@ -438,7 +452,6 @@ export function initApp(){
     updateNextReminderEstimate();
     if (!document.hidden) {
       scheduleNextIdleCheck(2*1000);
-      // also try to open pending finalize if returning to tab
       tryOpenFinalizeFromStorage();
     }
   });
