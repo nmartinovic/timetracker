@@ -123,7 +123,6 @@
   </div>
 
   <!-- Modal: Add/Edit -->
-  <!-- Modal: Add/Edit -->
   <div id="modalBackdrop" class="modal-backdrop">
     <div class="modal">
       <h3 id="modalTitle">Edit Session</h3>
@@ -150,6 +149,27 @@
     </div>
   </div>
 
+  <!-- Modal: Export CSV (with time range) -->
+  <div id="exportBackdrop" class="modal-backdrop">
+    <div class="modal">
+      <h3>Export CSV</h3>
+      <div class="row">
+        <label for="exportFrom">From (<span id="exportFromTz">TZ</span>)</label>
+        <input id="exportFrom" type="datetime-local" />
+      </div>
+      <div class="row">
+        <label for="exportTo">To (<span id="exportToTz">TZ</span>)</label>
+        <input id="exportTo" type="datetime-local" />
+      </div>
+      <div class="hint" id="exportTzNote">
+        Times are interpreted in your display timezone (<code>—</code>) and sessions that <em>overlap</em> the range will be included. Saved/exported as UTC.
+      </div>
+      <div class="actions">
+        <button class="btn btn-ghost" id="exportCancelBtn">Cancel</button>
+        <button class="btn btn-primary" id="exportGoBtn">Export</button>
+      </div>
+    </div>
+  </div>
 
   <audio id="ding" src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg"
     preload="auto"></audio>

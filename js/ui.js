@@ -15,7 +15,9 @@ const $ = sel => document.querySelector(sel);
 
 let displayTZ = localStorage.getItem('displayTZ') || getSystemTZ();
 
-// ====== Table rendering ======
+/* =========================================================
+   Table rendering
+   ========================================================= */
 function ensureIdsOnLog(log) {
   let changed = false;
   log.forEach(item => {
@@ -62,17 +64,75 @@ function renderLog() {
 
 window.addEventListener('time-log-updated', () => { renderLog(); maybeRerenderChart(); });
 
-// ====== Export / Clear ======
-function exportCSV() {
+/* =========================================================
+   Export / Clear
+   ========================================================= */
+// OLD: export all directly
+// NEW: open export modal with date/time range
+function openExportModal() {
+  // Prefill to something helpful: Today 00:00 → Now (in displayTZ)
+  const nowParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: displayTZ, year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', hour12:false
+  }).formatToParts(new Date());
+  const get = t => nowParts.find(p => p.type === t)?.value || '00';
+  const today = `${get('year')}-${get('month')}-${get('day')}`;
+  $('#exportFrom').value = `${today}T00:00`;
+  $('#exportTo').value   = `${today}T${get('hour')}:${get('minute')}`;
+
+  // Update tz labels/hint
+  const fTz = $('#exportFromTz'); if (fTz) fTz.textContent = displayTZ;
+  const tTz = $('#exportToTz');   if (tTz) tTz.textContent = displayTZ;
+  const note = $('#exportTzNote'); if (note) note.innerHTML = `Times are interpreted in your display timezone (<code>${displayTZ}</code>) and sessions that <em>overlap</em> the range will be included. Saved/exported as UTC.`;
+
+  $('#exportBackdrop').style.display = 'grid';
+}
+function closeExportModal() { $('#exportBackdrop').style.display = 'none'; }
+
+function exportCSVInRange() {
   const log = JSON.parse(localStorage.getItem('time_log') || '[]');
   if (log.length === 0) { alert('No data to export.'); return; }
+
+  const fromLocal = $('#exportFrom').value.trim();
+  const toLocal   = $('#exportTo').value.trim();
+
+  const fromUTC = fromLocal ? localDateTimeStrToUTCDate(fromLocal, displayTZ) : null;
+  const toUTC   = toLocal   ? localDateTimeStrToUTCDate(toLocal,   displayTZ) : null;
+
+  if (fromUTC && toUTC && toUTC <= fromUTC) { alert('“To” must be after “From”.'); return; }
+
+  // Include sessions that OVERLAP the range: end >= from && start <= to
+  const filtered = log.filter(r => {
+    const s = parseUTCString((r.start || '').replace(' UTC',''));
+    const e = parseUTCString((r.end   || '').replace(' UTC',''));
+    if (!s || !e) return false;
+    if (fromUTC && e < fromUTC) return false;
+    if (toUTC && s > toUTC) return false;
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    alert('No sessions found in that range.');
+    return;
+  }
+
   const header = ['Task', 'Duration', 'Start (UTC)', 'End (UTC)'];
-  const rows = log.map(r => [r.task, r.duration, r.start, r.end]);
+  const rows = filtered.map(r => [r.task, r.duration, r.start, r.end]);
   const csv = [header.join(','), ...rows.map(r => r.map(csvEscape).join(','))].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
+
+  // Optional: add range to filename if provided
+  const fmt = (d) => formatExcelDateString(d).replace(/[^0-9]/g,'').slice(0,12); // YYYYMMDDHHMM
+  const name =
+    (fromUTC || toUTC)
+      ? `time_log_${fromUTC ? fmt(fromUTC) : 'start'}_${toUTC ? fmt(toUTC) : 'now'}.csv`
+      : 'time_log.csv';
+
   const a = document.createElement('a');
-  a.href = url; a.download = 'time_log.csv'; a.click();
+  a.href = url; a.download = name; a.click();
+
+  closeExportModal();
 }
 
 function clearHistory() {
@@ -83,7 +143,9 @@ function clearHistory() {
   maybeRerenderChart();
 }
 
-// ====== Toggles ======
+/* =========================================================
+   Toggles
+   ========================================================= */
 function setBadge(el, isOn, labelOn, labelOff){
   el.textContent = isOn ? labelOn : labelOff;
   el.classList.remove('on','off'); el.classList.add(isOn ? 'on' : 'off');
@@ -101,7 +163,9 @@ function refreshMuteUI() {
   setBadge($('#muteRemindersBadge'), !m.reminders, 'Reminders: On', 'Reminders: Off');
 }
 
-// ====== Idle Reminder (when NO timer running) ======
+/* =========================================================
+   Idle Reminder (when NO timer running)
+   ========================================================= */
 let idleCheckHandle = null;
 
 function updateNextReminderEstimate() {
@@ -140,7 +204,9 @@ function scheduleNextIdleCheck(delayMs = 60*1000) {
   idleCheckHandle = setTimeout(maybeSendIdleReminder, delayMs);
 }
 
-// ====== Timezone UI ======
+/* =========================================================
+   Timezone UI
+   ========================================================= */
 function applyTimezone() {
   const input = $('#tzInput').value.trim();
   if (!input) return;
@@ -171,14 +237,22 @@ function updateTZUI() {
   const note = $('#chartNote');
   if (note) note.innerHTML = `Minutes per day for the last five weekdays (grouped by <strong>${displayTZ}</strong> day, using each session’s <em>start time</em>).`;
 
-  // Update modal labels / hint
+  // Update add/edit modal labels / hint
   const sTz = $('#modalStartTz'); if (sTz) sTz.textContent = displayTZ;
   const eTz = $('#modalEndTz');   if (eTz) eTz.textContent = displayTZ;
   const tzNote = $('#modalTzNote');
   if (tzNote) tzNote.innerHTML = `Times are interpreted in your display timezone (<code>${displayTZ}</code>) and saved as UTC.`;
+
+  // Update export modal labels / hint
+  const fTz = $('#exportFromTz'); if (fTz) fTz.textContent = displayTZ;
+  const tTz = $('#exportToTz');   if (tTz) tTz.textContent = displayTZ;
+  const eNote = $('#exportTzNote');
+  if (eNote) eNote.innerHTML = `Times are interpreted in your display timezone (<code>${displayTZ}</code>) and sessions that <em>overlap</em> the range will be included. Saved/exported as UTC.`;
 }
 
-// ====== Chart (last five weekdays) ======
+/* =========================================================
+   Chart (last five weekdays)
+   ========================================================= */
 function parseDurationToMinutes(durStr) {
   const [m, s] = String(durStr).split(':').map(x => parseInt(x, 10) || 0);
   return m + s / 60;
@@ -287,7 +361,9 @@ function maybeRerenderChart() {
   if (wrap.style.display !== 'none') renderBarChartForLastFiveWeekdays();
 }
 
-// ====== Modal add/edit ======
+/* =========================================================
+   Modal add/edit
+   ========================================================= */
 let modalMode = 'edit';
 let modalEditingId = null;
 
@@ -321,7 +397,7 @@ function openAddModal() {
   openModal();
 }
 
-// Finalize Count Up: prefill from UTC strings (provided by timer.js) into display TZ
+// Finalize Count Up: prefill from UTC (provided by timer.js) into display TZ
 function openFinalizeCountUp(startUTC, endUTC) {
   modalMode = 'add'; modalEditingId = null;
   $('#modalTitle').textContent = 'Finalize Count Up';
@@ -396,14 +472,21 @@ function deleteSessionFromModal() {
   closeModal(); renderLog(); maybeRerenderChart();
 }
 
-// ====== Init & wiring ======
+/* =========================================================
+   Init & wiring
+   ========================================================= */
 export function initApp(){
   // Buttons
   $('#startBtn').addEventListener('click', () => startTimer());
   $('#countUpBtn').addEventListener('click', () => startCountUp());
   $('#stopBtn').addEventListener('click', () => stopTimer(true));
 
-  $('#exportBtn').addEventListener('click', exportCSV);
+  // Export now opens the export modal
+  $('#exportBtn').addEventListener('click', openExportModal);
+  $('#exportGoBtn').addEventListener('click', exportCSVInRange);
+  $('#exportCancelBtn').addEventListener('click', closeExportModal);
+  $('#exportBackdrop').addEventListener('click', e => { if (e.target.id === 'exportBackdrop') closeExportModal(); });
+
   $('#clearBtn').addEventListener('click', clearHistory);
   $('#addPastBtn').addEventListener('click', openAddModal);
 
@@ -416,11 +499,17 @@ export function initApp(){
 
   $('#chartToggleBtn').addEventListener('click', toggleChart);
 
-  // Modal actions & close behavior
+  // Modal actions & close behavior (add/edit modal)
   $('#modalSaveBtn').addEventListener('click', saveModal);
   $('#modalCancelBtn').addEventListener('click', closeModal);
   $('#modalDeleteBtn').addEventListener('click', deleteSessionFromModal);
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      // close whichever modal is open
+      if ($('#exportBackdrop').style.display === 'grid') closeExportModal();
+      else closeModal();
+    }
+  });
   $('#modalBackdrop').addEventListener('click', e => { if (e.target.id === 'modalBackdrop') closeModal(); });
 
   // Initial UI state
