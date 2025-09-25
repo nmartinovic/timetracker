@@ -1,6 +1,7 @@
 // utils.js
 export const PERSIST_EVERY_MS = 5000;
-export const UP_REM_MS = 20 * 60 * 1000;
+export const UP_REM_MS = 20 * 60 * 1000;     // count-up reminder interval
+export const MAX_UP_MS = 2 * 60 * 60 * 1000; // ⬅️ hard cap: 2 hours for count-up
 
 export function getSystemTZ() {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; }
@@ -113,7 +114,6 @@ export function localDateTimeStrToUTCDate(localStr, tz) {
     const g = t => +(parts.find(p => p.type === t)?.value || '0');
     const y2 = g('year'), mo2 = g('month'), d2 = g('day'), h2 = g('hour'), mi2 = g('minute'), s2 = g('second');
 
-    // difference (desired - formatted) in minutes
     const desired = Date.UTC(Y, Mo-1, D, H, Mi, 0);
     const got     = Date.UTC(y2, mo2-1, d2, h2, mi2, 0);
     const diffMin = (desired - got) / 60000;

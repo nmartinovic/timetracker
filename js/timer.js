@@ -1,6 +1,7 @@
 // timer.js
 import {
-  PERSIST_EVERY_MS, UP_REM_MS, formatTime, formatExcelDateString, durationStringFromDates
+  PERSIST_EVERY_MS, UP_REM_MS, MAX_UP_MS,
+  formatTime, formatExcelDateString, durationStringFromDates
 } from './utils.js';
 
 const q = sel => document.querySelector(sel);
@@ -11,7 +12,7 @@ const state = {
   mode: null,           // 'down' | 'up' | null
   startTime: null,      // ms
   endTime: null,        // ms for countdown
-  task: null,           // may be '' during count-up (to force finalize modal on stop)
+  task: null,           // may be '' during count-up to force finalize modal
   durationMin: null,
   hasLoggedCurrent: false,
   dingTimeout: null,
@@ -99,18 +100,18 @@ export function startTimer() {
 /**
  * Start Count Up.
  * If a countdown is running, log it up to "now" first,
- * then start a fresh count-up from "now" with an EMPTY task.
- * (Empty task ensures the finalize modal appears on Stop.)
+ * then start a fresh count-up from "now" with an EMPTY task
+ * so Stop triggers the finalize modal.
  */
 export function startCountUp() {
   const now = Date.now();
 
-  // If we are mid-countdown, log that session up to now before switching
+  // If mid-countdown, log that session up to now before switching
   if (state.mode === 'down' && state.startTime && !state.hasLoggedCurrent) {
-    const prevTask = state.task; // countdown always has a task (validated on start)
+    const prevTask = state.task;
     if (prevTask) {
-      logSession(prevTask, now);      // end time is when Count Up was pressed
-      state.hasLoggedCurrent = true;  // guard against double-log
+      logSession(prevTask, now);      // end = when Count Up pressed
+      state.hasLoggedCurrent = true;
     }
   }
 
@@ -118,12 +119,12 @@ export function startCountUp() {
   if (state.timer) clearInterval(state.timer);
 
   state.mode = 'up';
-  state.startTime = now;     // new session begins at handoff moment
+  state.startTime = now;     // new session begins at handoff
   state.endTime = null;
   state.durationMin = null;
   state.hasLoggedCurrent = false;
 
-  // 🔑 Force empty task so Stop triggers the finalize modal
+  // Force empty task so Stop triggers finalize modal
   q('#task').value = '';
   state.task = '';
 
@@ -191,14 +192,15 @@ function tick() {
     const remaining = (state.endTime || 0) - now;
     updateTimerUI();
     if (remaining <= 0 && !state.hasLoggedCurrent) {
-      notify(state.task);
+      notifyCountdownOver(state.task);
       logSession(state.task, state.endTime);
       state.hasLoggedCurrent = true;
       stopTimer(false);
     }
   } else if (state.mode === 'up') {
     updateTimerUI();
-    // recurring 20m reminder while counting up
+
+    // 20-minute recurring reminder while counting up
     if (!state.muteReminders && !state.muteNotifications && typeof Notification !== 'undefined') {
       if (Notification.permission === 'granted' && state.nextUpReminderAt && now >= state.nextUpReminderAt) {
         const tLabel = state.task && state.task.trim() ? state.task : 'Unnamed';
@@ -210,6 +212,14 @@ function tick() {
         state.nextUpReminderAt += UP_REM_MS;
         writeActiveTimer();
       }
+    }
+
+    // ⛔ Hard cap: auto-stop at 2 hours
+    const elapsed = now - state.startTime;
+    if (elapsed >= MAX_UP_MS) {
+      // Optional, respectful notification
+      notifyAutoStop();
+      stopTimer(true); // will prompt finalize if task was empty
     }
   }
 }
@@ -242,7 +252,7 @@ function updateTimerUI() {
   }
 }
 
-function notify(task) {
+function notifyCountdownOver(task) {
   if (!state.muteSound) {
     const ding = q('#ding');
     ding.currentTime = 0;
@@ -251,6 +261,16 @@ function notify(task) {
   }
   if (!state.muteNotifications && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     new Notification('Time is up!', { body: `Task: ${task}` });
+  }
+}
+
+function notifyAutoStop() {
+  if (!state.muteNotifications && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    new Notification('Count up reached 2 hours — stopped', { body: 'Session was auto-stopped and recorded.' });
+  }
+  if (!state.muteSound) {
+    const ding = q('#ding');
+    try { ding.currentTime = 0; ding.play(); setTimeout(() => { try { ding.pause(); } catch(e){} }, 1000); } catch(e){}
   }
 }
 
@@ -281,6 +301,12 @@ export function restoreActiveTimer() {
   const now = Date.now();
 
   if (state.mode === 'up') {
+    // If already past hard cap on restore, immediately auto-stop
+    if (now - state.startTime >= MAX_UP_MS) {
+      notifyAutoStop();
+      stopTimer(true); // prompts finalize if needed
+      return;
+    }
     if (!state.nextUpReminderAt || state.nextUpReminderAt <= now) {
       const elapsedSinceStart = now - state.startTime;
       const intervalsPassed = Math.ceil(elapsedSinceStart / UP_REM_MS);
