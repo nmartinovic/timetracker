@@ -5,6 +5,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Time Tracker</title>
+
+  <!-- PWA bits -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#2563eb" />
+  <link rel="icon" href="icons/icon-192.png" sizes="192x192" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 
@@ -46,7 +53,6 @@
           <button class="btn" id="exportBtn">Export CSV</button>
           <button class="btn btn-warn" id="clearBtn">Clear History</button>
           <button class="btn btn-ghost" id="addPastBtn">Add Past Session</button>
-          <!-- NEW: Adjust current timer start -->
           <button class="btn btn-ghost" id="adjustStartBtn">Adjust Start</button>
         </div>
 
@@ -173,7 +179,7 @@
     </div>
   </div>
 
-  <!-- NEW: Modal: Adjust Start -->
+  <!-- Modal: Adjust Start -->
   <div id="adjustBackdrop" class="modal-backdrop">
     <div class="modal">
       <h3>Adjust Start Time</h3>
@@ -191,8 +197,7 @@
     </div>
   </div>
 
-  <audio id="ding" src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg"
-    preload="auto"></audio>
+  <audio id="ding" src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" preload="auto"></audio>
 
   <!-- Entry point -->
   <script type="module" src="js/app.js"></script>

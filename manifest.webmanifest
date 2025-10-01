@@ -1,0 +1,25 @@
+{
+  "name": "Time Tracker",
+  "short_name": "Tracker",
+  "id": "./",
+  "start_url": "./?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#2563eb",
+  "description": "Lightweight, offline, export-friendly time tracker.",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Start Count Up", "short_name": "Count Up", "url": "./?action=countup" },
+    { "name": "Start 25 min", "short_name": "Start 25", "url": "./?action=start25" },
+    { "name": "Start 50 min", "short_name": "Start 50", "url": "./?action=start50" }
+  ],
+  "launch_handler": { "client_mode": "focus-existing" },
+  "capture_links": "existing-client-event",
+  "categories": ["productivity", "utilities"]
+}
