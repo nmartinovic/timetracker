@@ -8,7 +8,8 @@ import {
 import {
   startTimer, startCountUp, stopTimer, restoreActiveTimer,
   isTimerRunning, getMutes, setMuteSound, setMuteNotifications, setMuteReminders,
-  markActivity, msSinceLastActivity
+  markActivity, msSinceLastActivity,
+  getMode, getCurrentStartMs, adjustStartTime
 } from './timer.js';
 
 const $ = sel => document.querySelector(sel);
@@ -67,10 +68,7 @@ window.addEventListener('time-log-updated', () => { renderLog(); maybeRerenderCh
 /* =========================================================
    Export / Clear
    ========================================================= */
-// OLD: export all directly
-// NEW: open export modal with date/time range
 function openExportModal() {
-  // Prefill to something helpful: Today 00:00 → Now (in displayTZ)
   const nowParts = new Intl.DateTimeFormat('en-CA', {
     timeZone: displayTZ, year:'numeric', month:'2-digit', day:'2-digit',
     hour:'2-digit', minute:'2-digit', hour12:false
@@ -80,7 +78,6 @@ function openExportModal() {
   $('#exportFrom').value = `${today}T00:00`;
   $('#exportTo').value   = `${today}T${get('hour')}:${get('minute')}`;
 
-  // Update tz labels/hint
   const fTz = $('#exportFromTz'); if (fTz) fTz.textContent = displayTZ;
   const tTz = $('#exportToTz');   if (tTz) tTz.textContent = displayTZ;
   const note = $('#exportTzNote'); if (note) note.innerHTML = `Times are interpreted in your display timezone (<code>${displayTZ}</code>) and sessions that <em>overlap</em> the range will be included. Saved/exported as UTC.`;
@@ -101,7 +98,6 @@ function exportCSVInRange() {
 
   if (fromUTC && toUTC && toUTC <= fromUTC) { alert('“To” must be after “From”.'); return; }
 
-  // Include sessions that OVERLAP the range: end >= from && start <= to
   const filtered = log.filter(r => {
     const s = parseUTCString((r.start || '').replace(' UTC',''));
     const e = parseUTCString((r.end   || '').replace(' UTC',''));
@@ -122,8 +118,7 @@ function exportCSVInRange() {
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
 
-  // Optional: add range to filename if provided
-  const fmt = (d) => formatExcelDateString(d).replace(/[^0-9]/g,'').slice(0,12); // YYYYMMDDHHMM
+  const fmt = (d) => formatExcelDateString(d).replace(/[^0-9]/g,'').slice(0,12);
   const name =
     (fromUTC || toUTC)
       ? `time_log_${fromUTC ? fmt(fromUTC) : 'start'}_${toUTC ? fmt(toUTC) : 'now'}.csv`
@@ -150,7 +145,6 @@ function setBadge(el, isOn, labelOn, labelOff){
   el.textContent = isOn ? labelOn : labelOff;
   el.classList.remove('on','off'); el.classList.add(isOn ? 'on' : 'off');
 }
-
 function refreshMuteUI() {
   const m = getMutes();
   $('#muteSoundBtn').textContent = m.sound ? 'Unmute Sound' : 'Mute Sound';
@@ -182,7 +176,6 @@ function updateNextReminderEstimate() {
   const s = String(Math.floor((remainingMs % 60000) / 1000)).padStart(2,'0');
   el.textContent = remainingMs === 0 ? 'Reminder eligible now.' : `Next reminder in ~${m}:${s}`;
 }
-
 function maybeSendIdleReminder() {
   const noTimerRunning = !isTimerRunning();
   const mutes = getMutes();
@@ -192,13 +185,12 @@ function maybeSendIdleReminder() {
         if (Notification.permission !== 'granted') Notification.requestPermission();
         if (Notification.permission === 'granted') new Notification('Reminder: no timer running', { body: 'Start a timer?' });
       }
-      markActivity(); // reset
+      markActivity();
     }
   }
   updateNextReminderEstimate();
   scheduleNextIdleCheck();
 }
-
 function scheduleNextIdleCheck(delayMs = 60*1000) {
   if (idleCheckHandle) clearTimeout(idleCheckHandle);
   idleCheckHandle = setTimeout(maybeSendIdleReminder, delayMs);
@@ -220,7 +212,6 @@ function applyTimezone() {
   renderLog();
   maybeRerenderChart();
 }
-
 function useSystemTimezone() {
   displayTZ = getSystemTZ();
   localStorage.setItem('displayTZ', displayTZ);
@@ -228,7 +219,6 @@ function useSystemTimezone() {
   renderLog();
   maybeRerenderChart();
 }
-
 function updateTZUI() {
   $('#tzBadge').textContent = `TZ: ${displayTZ}`;
   $('#tzInput').value = displayTZ;
@@ -237,17 +227,17 @@ function updateTZUI() {
   const note = $('#chartNote');
   if (note) note.innerHTML = `Minutes per day for the last five weekdays (grouped by <strong>${displayTZ}</strong> day, using each session’s <em>start time</em>).`;
 
-  // Update add/edit modal labels / hint
   const sTz = $('#modalStartTz'); if (sTz) sTz.textContent = displayTZ;
   const eTz = $('#modalEndTz');   if (eTz) eTz.textContent = displayTZ;
   const tzNote = $('#modalTzNote');
   if (tzNote) tzNote.innerHTML = `Times are interpreted in your display timezone (<code>${displayTZ}</code>) and saved as UTC.`;
 
-  // Update export modal labels / hint
   const fTz = $('#exportFromTz'); if (fTz) fTz.textContent = displayTZ;
   const tTz = $('#exportToTz');   if (tTz) tTz.textContent = displayTZ;
   const eNote = $('#exportTzNote');
   if (eNote) eNote.innerHTML = `Times are interpreted in your display timezone (<code>${displayTZ}</code>) and sessions that <em>overlap</em> the range will be included. Saved/exported as UTC.`;
+
+  const aTz = $('#adjustStartTz'); if (aTz) aTz.textContent = displayTZ;
 }
 
 /* =========================================================
@@ -378,7 +368,6 @@ function openEditModal(id) {
   $('#modalTitle').textContent = 'Edit Session';
   $('#modalDeleteBtn').style.display = '';
 
-  // Prefill using display TZ
   $('#modalTask').value = entry.task || '';
   const startDt = parseUTCString((entry.start || '').replace(' UTC',''));
   const endDt   = parseUTCString((entry.end   || '').replace(' UTC',''));
@@ -397,7 +386,7 @@ function openAddModal() {
   openModal();
 }
 
-// Finalize Count Up: prefill from UTC (provided by timer.js) into display TZ
+// Finalize Count Up modal
 function openFinalizeCountUp(startUTC, endUTC) {
   modalMode = 'add'; modalEditingId = null;
   $('#modalTitle').textContent = 'Finalize Count Up';
@@ -411,13 +400,11 @@ function openFinalizeCountUp(startUTC, endUTC) {
 
   openModal();
 }
-
 window.addEventListener('countup-need-task', (e) => {
   const { startUTC, endUTC } = e.detail || {};
   try { localStorage.removeItem('pending_countup'); } catch(e){}
   openFinalizeCountUp(startUTC, endUTC);
 });
-
 function tryOpenFinalizeFromStorage() {
   try {
     const raw = localStorage.getItem('pending_countup');
@@ -473,6 +460,31 @@ function deleteSessionFromModal() {
 }
 
 /* =========================================================
+   NEW: Adjust Start modal (for current running timer)
+   ========================================================= */
+function openAdjustStartModal() {
+  if (!isTimerRunning()) { alert('No timer is running.'); return; }
+  const startMs = getCurrentStartMs();
+  if (!startMs) { alert('No start time to adjust.'); return; }
+
+  const val = utcDateToLocalDateTimeValue(new Date(startMs), displayTZ);
+  $('#adjustStartInput').value = val;
+  const tzEl = $('#adjustStartTz'); if (tzEl) tzEl.textContent = displayTZ;
+  $('#adjustBackdrop').style.display = 'grid';
+}
+function closeAdjustStartModal() { $('#adjustBackdrop').style.display = 'none'; }
+function saveAdjustStartModal() {
+  const str = $('#adjustStartInput').value.trim();
+  if (!str) { alert('Please pick a start date/time.'); return; }
+  const d = localDateTimeStrToUTCDate(str, displayTZ);
+  if (!d) { alert(`Please choose a valid date/time in ${displayTZ}.`); return; }
+
+  const ok = adjustStartTime(d.getTime());
+  if (!ok) { alert('Could not adjust start time.'); return; }
+  closeAdjustStartModal();
+}
+
+/* =========================================================
    Init & wiring
    ========================================================= */
 export function initApp(){
@@ -481,11 +493,17 @@ export function initApp(){
   $('#countUpBtn').addEventListener('click', () => startCountUp());
   $('#stopBtn').addEventListener('click', () => stopTimer(true));
 
-  // Export now opens the export modal
+  // Export
   $('#exportBtn').addEventListener('click', openExportModal);
   $('#exportGoBtn').addEventListener('click', exportCSVInRange);
   $('#exportCancelBtn').addEventListener('click', closeExportModal);
   $('#exportBackdrop').addEventListener('click', e => { if (e.target.id === 'exportBackdrop') closeExportModal(); });
+
+  // NEW: Adjust Start wiring
+  $('#adjustStartBtn').addEventListener('click', openAdjustStartModal);
+  $('#adjustSaveBtn').addEventListener('click', saveAdjustStartModal);
+  $('#adjustCancelBtn').addEventListener('click', closeAdjustStartModal);
+  $('#adjustBackdrop').addEventListener('click', e => { if (e.target.id === 'adjustBackdrop') closeAdjustStartModal(); });
 
   $('#clearBtn').addEventListener('click', clearHistory);
   $('#addPastBtn').addEventListener('click', openAddModal);
@@ -505,8 +523,8 @@ export function initApp(){
   $('#modalDeleteBtn').addEventListener('click', deleteSessionFromModal);
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      // close whichever modal is open
-      if ($('#exportBackdrop').style.display === 'grid') closeExportModal();
+      if ($('#adjustBackdrop').style.display === 'grid') closeAdjustStartModal();
+      else if ($('#exportBackdrop').style.display === 'grid') closeExportModal();
       else closeModal();
     }
   });
@@ -527,12 +545,23 @@ export function initApp(){
   }
 
   renderLog();
-
-  // Restore active timer
   restoreActiveTimer();
 
   // If a count-up stop happened but event was missed, open from storage
-  tryOpenFinalizeFromStorage();
+  try {
+    const raw = localStorage.getItem('pending_countup');
+    if (raw) {
+      const { startUTC, endUTC } = JSON.parse(raw) || {};
+      if (startUTC && endUTC) {
+        const sDt = parseUTCString(startUTC.replace(' UTC',''));
+        const eDt = parseUTCString(endUTC.replace(' UTC',''));
+        if (sDt && eDt) {
+          openFinalizeCountUp(startUTC, endUTC);
+          localStorage.removeItem('pending_countup');
+        }
+      }
+    }
+  } catch(e){}
 
   // Idle reminder loop
   updateNextReminderEstimate();
@@ -541,7 +570,6 @@ export function initApp(){
     updateNextReminderEstimate();
     if (!document.hidden) {
       scheduleNextIdleCheck(2*1000);
-      tryOpenFinalizeFromStorage();
     }
   });
 }

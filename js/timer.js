@@ -70,6 +70,8 @@ export function setMuteReminders(v) {
 
 export function isTimerRunning() { return state.timer !== null; }
 export function getMode() { return state.mode; }
+export function getCurrentStartMs() { return state.startTime; }
+export function getCountdownDurationMin() { return state.mode === 'down' ? state.durationMin : null; }
 
 // ===== Core timer controls =====
 export function startTimer() {
@@ -183,6 +185,47 @@ export function stopTimer(log = true) {
   markActivity();
 }
 
+// ===== NEW: Adjust start time for the current session =====
+export function adjustStartTime(newStartMs) {
+  if (!state.mode || !state.startTime) return false;
+
+  const now = Date.now();
+  state.startTime = newStartMs;
+
+  if (state.mode === 'down') {
+    // preserve duration; recompute end
+    if (typeof state.durationMin === 'number' && isFinite(state.durationMin)) {
+      state.endTime = state.startTime + state.durationMin * 60000;
+    }
+  } else if (state.mode === 'up') {
+    // re-align next reminder to the next 20-min boundary after new start
+    const elapsedSinceStart = now - state.startTime;
+    const intervalsPassed = Math.ceil(elapsedSinceStart / UP_REM_MS);
+    state.nextUpReminderAt = state.startTime + Math.max(1, intervalsPassed) * UP_REM_MS;
+  }
+
+  writeActiveTimer();
+  markActivity();
+  updateTimerUI();
+
+  // Immediate boundary checks
+  if (state.mode === 'down') {
+    const remaining = (state.endTime || 0) - now;
+    if (remaining <= 0 && !state.hasLoggedCurrent) {
+      notifyCountdownOver(state.task);
+      logSession(state.task, state.endTime);
+      state.hasLoggedCurrent = true;
+      stopTimer(false);
+    }
+  } else if (state.mode === 'up') {
+    if (now - state.startTime >= MAX_UP_MS) {
+      notifyAutoStop();
+      stopTimer(true);
+    }
+  }
+  return true;
+}
+
 // ===== Ticking / UI update =====
 function tick() {
   if (!state.startTime || !state.mode) return;
@@ -214,10 +257,9 @@ function tick() {
       }
     }
 
-    // ⛔ Hard cap: auto-stop at 2 hours
+    // Hard cap: auto-stop at 2 hours
     const elapsed = now - state.startTime;
     if (elapsed >= MAX_UP_MS) {
-      // Optional, respectful notification
       notifyAutoStop();
       stopTimer(true); // will prompt finalize if task was empty
     }

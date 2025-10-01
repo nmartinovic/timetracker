@@ -46,6 +46,8 @@
           <button class="btn" id="exportBtn">Export CSV</button>
           <button class="btn btn-warn" id="clearBtn">Clear History</button>
           <button class="btn btn-ghost" id="addPastBtn">Add Past Session</button>
+          <!-- NEW: Adjust current timer start -->
+          <button class="btn btn-ghost" id="adjustStartBtn">Adjust Start</button>
         </div>
 
         <div class="spacer"></div>
@@ -167,6 +169,24 @@
       <div class="actions">
         <button class="btn btn-ghost" id="exportCancelBtn">Cancel</button>
         <button class="btn btn-primary" id="exportGoBtn">Export</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NEW: Modal: Adjust Start -->
+  <div id="adjustBackdrop" class="modal-backdrop">
+    <div class="modal">
+      <h3>Adjust Start Time</h3>
+      <div class="row">
+        <label for="adjustStartInput">Start (<span id="adjustStartTz">TZ</span>)</label>
+        <input id="adjustStartInput" type="datetime-local" />
+      </div>
+      <div class="hint" id="adjustHint">
+        This shifts the start time of the current timer. For countdowns, the duration stays the same and the end time moves accordingly.
+      </div>
+      <div class="actions">
+        <button class="btn btn-ghost" id="adjustCancelBtn">Cancel</button>
+        <button class="btn btn-primary" id="adjustSaveBtn">Save</button>
       </div>
     </div>
   </div>
