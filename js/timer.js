@@ -8,10 +8,11 @@ import {
 
 const q = sel => document.querySelector(sel);
 
+// --- helpers: place near the top of js/timer.js ---
 function getDisplayTZ() {
-  return localStorage.getItem('displayTZ') || getSystemTZ();
+  try { return localStorage.getItem('displayTZ') || getSystemTZ(); }
+  catch { return getSystemTZ(); }
 }
-
 function parseTimeOfDay(raw) {
   const m = String(raw || '').trim().match(/^(\d{1,2}):(\d{2})$/);
   if (!m) return null;
@@ -19,22 +20,19 @@ function parseTimeOfDay(raw) {
   if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
   return { hh, mm };
 }
-
 function computeEndMsFromLocalTime(hh, mm, tz) {
   const pad = n => String(n).padStart(2, '0');
   const now = new Date();
-  // today at hh:mm in tz
-  const todayYMD = ymdInTZ(now, tz);
-  const todayLocalStr = `${todayYMD}T${pad(hh)}:${pad(mm)}`;
-  let target = localDateTimeStrToUTCDate(todayLocalStr, tz).getTime();
+  const todayYMD = ymdInTZ(now, tz);                  // YYYY-MM-DD in tz
+  const localStr = `${todayYMD}T${pad(hh)}:${pad(mm)}`; // naive local "YYYY-MM-DDTHH:MM"
+  let target = localDateTimeStrToUTCDate(localStr, tz).getTime();
+  const nowUTCms = Date.now();
 
-  // if already passed, use tomorrow at hh:mm in tz
-  if (target <= Date.now()) {
-    const localNow = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
-    localNow.setDate(localNow.getDate() + 1);
-    const tomorrowYMD = ymdInTZ(localNow, tz);
-    const tomorrowLocalStr = `${tomorrowYMD}T${pad(hh)}:${pad(mm)}`;
-    target = localDateTimeStrToUTCDate(tomorrowLocalStr, tz).getTime();
+  // if target time is already passed in that tz, use tomorrow at that time
+  if (target <= nowUTCms) {
+    const tomorrowLocal = localDateTimeStrToUTCDate(localStr, tz);
+    tomorrowLocal.setUTCDate(tomorrowLocal.getUTCDate() + 1);
+    target = tomorrowLocal.getTime();
   }
   return target;
 }
@@ -110,18 +108,16 @@ export function getCountdownDurationMin() { return state.mode === 'down' ? state
 // ===== Core timer controls =====
 export function startTimer() {
   const task = q('#task').value.trim();
-  const raw = q('#duration').value.trim();
-
-  // Accept HH:MM (time-of-day in display TZ) OR numeric minutes
-  const tod = parseTimeOfDay(raw);
+  const raw = q('#duration').value;                 // allow text, e.g. "25" or "15:21"
+  const hhmm = parseTimeOfDay(raw);
   let minutes = null;
   let specificEndMs = null;
 
-  if (tod) {
+  if (hhmm) {
     const tz = getDisplayTZ();
-    specificEndMs = computeEndMsFromLocalTime(tod.hh, tod.mm, tz);
-    const diffMs = Math.max(0, specificEndMs - Date.now());
-    minutes = Math.max(1, Math.ceil(diffMs / 60000)); // keep durationMin coherent
+    specificEndMs = computeEndMsFromLocalTime(hhmm.hh, hhmm.mm, tz);
+    const ms = Math.max(0, specificEndMs - Date.now());
+    minutes = Math.max(1, Math.round(ms / 60000)); // store minutes for "Adjust Start" feature
   } else {
     minutes = parseInt(raw, 10);
   }
@@ -133,9 +129,9 @@ export function startTimer() {
 
   state.mode = 'down';
   state.startTime = Date.now();
-  state.endTime = specificEndMs ?? (state.startTime + minutes * 60000);
+  state.endTime = specificEndMs ?? (state.startTime + minutes * 60000); // ← key line
   state.task = task;
-  state.durationMin = minutes; // used if you adjust the start time later
+  state.durationMin = minutes;       // used by Adjust Start
   state.hasLoggedCurrent = false;
   state.nextUpReminderAt = null;
 
