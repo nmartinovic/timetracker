@@ -35,10 +35,12 @@
           <label class="nowrap">Task</label>
           <input id="task" type="text" placeholder="What are you working on?" style="flex:1" />
         </div>
-        <div class="row">
-          <label class="nowrap">Duration (min)</label>
-          <input id="duration" type="number" value="25" min="1" style="width:120px" />
-        </div>
+<div class="row">
+  <label class="nowrap">Duration (min or HH:MM)</label>
+  <input id="duration" type="text" value="25" style="width:140px"
+         placeholder="25 or 15:21" inputmode="numeric" />
+</div>
+
         <div class="row" id="controlsRow" style="gap:8px; margin-top:6px">
           <button class="btn btn-primary" id="startBtn">Start</button>
           <button class="btn" id="countUpBtn">Count Up</button>

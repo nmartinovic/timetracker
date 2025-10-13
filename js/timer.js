@@ -1,10 +1,44 @@
 // timer.js
 import {
   PERSIST_EVERY_MS, UP_REM_MS, MAX_UP_MS,
-  formatTime, formatExcelDateString, durationStringFromDates
+  formatTime, formatExcelDateString, durationStringFromDates,
+  getSystemTZ, ymdInTZ, localDateTimeStrToUTCDate
 } from './utils.js';
 
+
 const q = sel => document.querySelector(sel);
+
+function getDisplayTZ() {
+  return localStorage.getItem('displayTZ') || getSystemTZ();
+}
+
+function parseTimeOfDay(raw) {
+  const m = String(raw || '').trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const hh = +m[1], mm = +m[2];
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return { hh, mm };
+}
+
+function computeEndMsFromLocalTime(hh, mm, tz) {
+  const pad = n => String(n).padStart(2, '0');
+  const now = new Date();
+  // today at hh:mm in tz
+  const todayYMD = ymdInTZ(now, tz);
+  const todayLocalStr = `${todayYMD}T${pad(hh)}:${pad(mm)}`;
+  let target = localDateTimeStrToUTCDate(todayLocalStr, tz).getTime();
+
+  // if already passed, use tomorrow at hh:mm in tz
+  if (target <= Date.now()) {
+    const localNow = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
+    localNow.setDate(localNow.getDate() + 1);
+    const tomorrowYMD = ymdInTZ(localNow, tz);
+    const tomorrowLocalStr = `${tomorrowYMD}T${pad(hh)}:${pad(mm)}`;
+    target = localDateTimeStrToUTCDate(tomorrowLocalStr, tz).getTime();
+  }
+  return target;
+}
+
 
 // ===== Shared state =====
 const state = {
@@ -76,14 +110,32 @@ export function getCountdownDurationMin() { return state.mode === 'down' ? state
 // ===== Core timer controls =====
 export function startTimer() {
   const task = q('#task').value.trim();
-  const minutes = parseInt(q('#duration').value, 10);
-  if (!task || isNaN(minutes) || minutes < 1) { alert('Please enter a valid task and duration.'); return; }
+  const raw = q('#duration').value.trim();
+
+  // Accept HH:MM (time-of-day in display TZ) OR numeric minutes
+  const tod = parseTimeOfDay(raw);
+  let minutes = null;
+  let specificEndMs = null;
+
+  if (tod) {
+    const tz = getDisplayTZ();
+    specificEndMs = computeEndMsFromLocalTime(tod.hh, tod.mm, tz);
+    const diffMs = Math.max(0, specificEndMs - Date.now());
+    minutes = Math.max(1, Math.ceil(diffMs / 60000)); // keep durationMin coherent
+  } else {
+    minutes = parseInt(raw, 10);
+  }
+
+  if (!task || isNaN(minutes) || minutes < 1) {
+    alert('Please enter a valid task and either minutes (e.g., 25) or a time (e.g., 15:21).');
+    return;
+  }
 
   state.mode = 'down';
   state.startTime = Date.now();
-  state.endTime = state.startTime + minutes * 60000;
+  state.endTime = specificEndMs ?? (state.startTime + minutes * 60000);
   state.task = task;
-  state.durationMin = minutes;
+  state.durationMin = minutes; // used if you adjust the start time later
   state.hasLoggedCurrent = false;
   state.nextUpReminderAt = null;
 
@@ -98,6 +150,7 @@ export function startTimer() {
   if (state.timer) clearInterval(state.timer);
   state.timer = setInterval(tick, 1000);
 }
+
 
 /**
  * Start Count Up.
